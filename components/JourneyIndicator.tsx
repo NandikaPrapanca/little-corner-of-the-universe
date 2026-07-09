@@ -82,11 +82,60 @@ interface StarProps {
   shouldReduce:  boolean;
   label:         string;
   index:         number;
+  /** When false, render a plain static star with no animation props */
+  mounted:       boolean;
 }
 
-function Star({ active, justActivated, shouldReduce, label, index }: StarProps) {
+function Star({ active, justActivated, shouldReduce, label, index, mounted }: StarProps) {
   const starPath = 'M5 0 L5.55 4.45 L10 5 L5.55 5.55 L5 10 L4.45 5.55 L0 5 L4.45 4.45 Z';
 
+  // ── Pre-hydration: purely static, no Framer Motion animation props ──
+  // The server and first client render must be byte-for-byte identical.
+  // We render a plain <div> + <svg> here — no `animate`, no `initial`,
+  // no values derived from useReducedMotion() or client-only state.
+  if (!mounted) {
+    return (
+      <div
+        role="img"
+        aria-label={`${label}: ${active ? 'current section' : 'not yet reached'}`}
+        style={{
+          position:       'relative',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+          width:          '20px',
+          height:         '20px',
+        }}
+      >
+        {/* Static glow placeholder — same dimensions, no animation */}
+        {active && (
+          <div
+            aria-hidden="true"
+            style={{
+              position:      'absolute',
+              inset:         '-6px',
+              borderRadius:  '50%',
+              background:    'radial-gradient(circle, rgba(246,241,232,0.22) 0%, transparent 70%)',
+              pointerEvents: 'none',
+              opacity:       0.6,
+            }}
+          />
+        )}
+        <svg
+          aria-hidden="true"
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          style={{ display: 'block', opacity: active ? 1 : 0.28 }}
+        >
+          <path d={starPath} fill={active ? '#F6F1E8' : '#89AACC'} />
+        </svg>
+      </div>
+    );
+  }
+
+  // ── Post-hydration: full Framer Motion animations ────────────────────
   return (
     <motion.div
       role="img"
@@ -175,6 +224,13 @@ export default function JourneyIndicator() {
   const shouldReduce = useReducedMotion() ?? false;
   const ids          = SECTIONS.map(s => s.id);
 
+  // ── Hydration gate ────────────────────────────────────────────────────
+  // false on the server and during the first client render.
+  // true only after useEffect runs (client-only).
+  // While false, Star renders plain static HTML — no Framer Motion props,
+  // no values from useReducedMotion() — so server and client HTML match exactly.
+  const [mounted, setMounted] = useState(false);
+
   // Set of section IDs currently touching the viewport (any pixel visible)
   const intersectingRef = useRef<Set<string>>(new Set());
   // Single active ID — the section closest to viewport midpoint
@@ -183,6 +239,9 @@ export default function JourneyIndicator() {
   const prevActiveRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Mark as mounted — enables Framer Motion animations on all stars
+    setMounted(true);
+
     // Resolve the active section and push to state
     function update() {
       const next = pickActiveId(ids, intersectingRef.current);
@@ -315,6 +374,7 @@ export default function JourneyIndicator() {
             shouldReduce={shouldReduce}
             label={star.label}
             index={i}
+            mounted={mounted}
           />
         ))}
       </div>
