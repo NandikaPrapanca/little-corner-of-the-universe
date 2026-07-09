@@ -49,8 +49,6 @@ import ShootingStar     from '@/components/ui/ShootingStar';
 function WatercolorMoon() {
   const shouldReduce = useReducedMotion() ?? false;
 
-  // The SVG canvas is 140×140; the disc centre is at 70,70 with r≈32
-  // giving plenty of bleed room for the corona layers.
   const cx = 70;
   const cy = 70;
   const r  = 32;
@@ -60,26 +58,69 @@ function WatercolorMoon() {
       aria-hidden="true"
       style={{
         position: 'absolute',
-        top:      'calc(5% - 12px)',   // compensate for the corona bleed
+        // Moon is now 112px rendered (up from 88px, +27%).
+        // Corona bleed compensation stays 12px.
+        top:      'calc(5% - 12px)',
         right:    'calc(8% - 12px)',
-        width:    '88px',
-        height:   '88px',
-        // Breathing glow on the container — scales the entire element
-        // very gently so the outer corona pulses
+        width:    '112px',
+        height:   '112px',
       }}
-      animate={shouldReduce ? undefined : {
-        opacity: [0.82, 1, 0.82],
-      }}
+      animate={shouldReduce ? undefined : { opacity: [0.82, 1, 0.82] }}
       transition={shouldReduce ? undefined : {
-        duration:   10,
-        ease:       'easeInOut',
-        repeat:     Infinity,
-        repeatType: 'mirror',
+        duration: 10, ease: 'easeInOut', repeat: Infinity, repeatType: 'mirror',
       }}
     >
+      {/* ── Kuromi peeking behind the moon ───────────────────────────── */}
+      {/*
+        Kuromi is a child of the moon container so she moves with it.
+        zIndex 0 puts her behind the SVG moon (zIndex 1).
+        She's offset upward so only her head/ears/shoulders are visible
+        above the moon's equator — the rest is hidden behind the disc.
+        The moon container is 112px; the disc occupies the centre ~80px.
+        Kuromi is sized so her shoulders land roughly at disc-centre height.
+      */}
+      <motion.div
+        aria-hidden="true"
+        style={{
+          position:      'absolute',
+          // Centre horizontally, raise so top ~50% of Kuromi is visible
+          left:          '50%',
+          bottom:        '18%',
+          transform:     'translateX(-50%)',
+          width:         'clamp(40px, 7vw, 58px)',
+          height:        'clamp(40px, 7vw, 58px)',
+          zIndex:        0,   // behind the moon SVG (z-index: 1)
+          pointerEvents: 'none',
+        }}
+        animate={shouldReduce ? undefined : {
+          y: [0, -4, 0],
+        }}
+        transition={shouldReduce ? undefined : {
+          duration:   3.5,
+          ease:       'easeInOut',
+          repeat:     Infinity,
+          repeatType: 'mirror',
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/characters/kuromi/kuromi.webp"
+          alt=""
+          draggable={false}
+          style={{
+            width:          '100%',
+            height:         '100%',
+            objectFit:      'contain',
+            objectPosition: 'top center',
+            display:        'block',
+            filter:         'drop-shadow(0 2px 8px rgba(0,0,0,0.5))',
+          }}
+        />
+      </motion.div>
+
       {/* Slow rotation wrapper — 1.5° over 75 seconds */}
       <motion.div
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100%', height: '100%', position: 'relative', zIndex: 1 }}
         animate={shouldReduce ? undefined : { rotate: [0, 1.5, 0, -1.5, 0] }}
         transition={shouldReduce ? undefined : {
           duration:   75,
@@ -89,8 +130,8 @@ function WatercolorMoon() {
         }}
       >
         <svg
-          width="88"
-          height="88"
+          width="112"
+          height="112"
           viewBox="0 0 140 140"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
