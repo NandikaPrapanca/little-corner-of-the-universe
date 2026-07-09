@@ -35,6 +35,7 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import FadeIn    from '@/components/ui/FadeIn';
 import Container from '@/components/ui/Container';
+import BobEasterEgg from '@/components/ui/BobEasterEgg';
 
 // ─── Memory data ─────────────────────────────────────────────────────────
 

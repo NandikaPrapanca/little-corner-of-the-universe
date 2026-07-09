@@ -16,6 +16,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import FadeIn      from '@/components/ui/FadeIn';
 import Container   from '@/components/ui/Container';
+import BobEasterEgg from '@/components/ui/BobEasterEgg';
 
 // ─── Thoughts — each becomes its own card ─────────────────────────────────
 
@@ -319,7 +320,19 @@ export default function ChapterThree() {
 
           {/* ── Divider fading into next section ─────────────────────── */}
           <FadeIn direction="none">
-            <ClosingDivider />
+            {/* Bob sleeps near the bottom-left corner of this section */}
+            <div style={{ position: 'relative' }}>
+              <ClosingDivider />
+              <BobEasterEgg
+                style={{
+                  position: 'absolute',
+                  bottom:   '-4px',
+                  left:     'clamp(0px, 2%, 16px)',
+                  // Tilt slightly — sleeping pose
+                  transform: 'rotate(-12deg)',
+                }}
+              />
+            </div>
           </FadeIn>
 
         </div>

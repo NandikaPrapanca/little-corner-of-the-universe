@@ -20,6 +20,7 @@ import Image            from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
 import FadeIn           from '@/components/ui/FadeIn';
 import Container        from '@/components/ui/Container';
+import BobEasterEgg     from '@/components/ui/BobEasterEgg';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -527,7 +528,18 @@ export default function ChapterTwo() {
 
 
           {/* ── Final breathing space ───────────────────────────────── */}
-          <div style={{ height: 'clamp(2rem, 5vw, 4rem)' }} aria-hidden="true" />
+          <div style={{ position: 'relative' }}>
+            <div style={{ height: 'clamp(2rem, 5vw, 4rem)' }} aria-hidden="true" />
+            {/* Bob peeks beside the third photo area */}
+            <BobEasterEgg
+              flipX
+              style={{
+                position: 'absolute',
+                bottom:   0,
+                left:     'clamp(-8px, -1vw, -4px)',
+              }}
+            />
+          </div>
 
           {/* ── Section divider — gradient line with ornament ──────── */}
           <FadeIn direction="none">

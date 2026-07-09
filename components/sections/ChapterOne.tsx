@@ -19,6 +19,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import FadeIn from '@/components/ui/FadeIn';
 import Container from '@/components/ui/Container';
+import BobEasterEgg from '@/components/ui/BobEasterEgg';
 
 // ─── Constellation divider ─────────────────────────────────────────────────
 // A tiny hand-drawn constellation — three stars connected by faint lines.
@@ -331,7 +332,17 @@ export default function ChapterOne() {
 
           {/* ── Constellation divider — fades into next section ──── */}
           <FadeIn direction="none">
-            <ConstellationDivider />
+            {/* Bob sits beside the constellation — easy to miss */}
+            <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+              <ConstellationDivider />
+              <BobEasterEgg
+                style={{
+                  position: 'absolute',
+                  bottom:   '8px',
+                  right:    'clamp(0px, 5%, 40px)',
+                }}
+              />
+            </div>
           </FadeIn>
 
         </div>
