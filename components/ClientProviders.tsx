@@ -2,15 +2,13 @@
 
 /**
  * ClientProviders.tsx
- * A thin 'use client' wrapper around all client-side providers.
- * This allows layout.tsx to remain a Server Component while still
- * mounting context providers that require the client runtime.
- *
- * Add any future client providers here.
+ * Thin 'use client' wrapper — mounts all fixed client-side UI elements
+ * that live outside the page scroll tree.
  */
 
 import type { ReactNode } from 'react';
-import AudioProvider from '@/components/AudioProvider';
+import AudioProvider      from '@/components/AudioProvider';
+import JourneyIndicator   from '@/components/JourneyIndicator';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -20,6 +18,8 @@ export default function ClientProviders({ children }: ClientProvidersProps) {
   return (
     <AudioProvider>
       {children}
+      {/* Fixed journey indicator — six stars at bottom-center */}
+      <JourneyIndicator />
     </AudioProvider>
   );
 }

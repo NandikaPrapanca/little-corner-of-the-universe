@@ -57,20 +57,28 @@ export default function MusicPlayer() {
         style={{ borderRadius: '999px' }}
       >
         {/* ── Music icon — toggle expand ──────────────────────────── */}
-        <button
+        <motion.button
           className="music-btn"
           onClick={() => setIsExpanded((p) => !p)}
           aria-label={isExpanded ? 'Collapse music player' : 'Expand music player'}
           aria-expanded={isExpanded}
+          // Slow continuous rotation while playing — stops when paused
+          animate={isPlaying ? { rotate: 360 } : { rotate: 0 }}
+          transition={
+            isPlaying
+              ? { duration: 12, repeat: Infinity, ease: 'linear' }
+              : { duration: 0.6, ease: 'easeOut' }
+          }
+          whileHover={{ filter: 'brightness(1.4)' }}
         >
           <Music2
             size={14}
             style={{
-              color: isPlaying ? '#89CFF0' : 'rgba(203,213,225,0.6)',
+              color:      isPlaying ? '#89CFF0' : 'rgba(203,213,225,0.6)',
               transition: 'color 0.3s ease',
             }}
           />
-        </button>
+        </motion.button>
 
         {/* ── Expanded controls ───────────────────────────────────── */}
         <AnimatePresence>
@@ -104,9 +112,8 @@ export default function MusicPlayer() {
                 className="music-btn"
                 onClick={handlePlayPause}
                 aria-label={isPlaying ? 'Pause music' : 'Play music'}
-                disabled={!isLoaded}
-                style={{ opacity: isLoaded ? 1 : 0.35 }}
-                title={!isLoaded ? 'Loading audio…' : undefined}
+                style={{ opacity: isLoaded ? 1 : 0.55 }}
+                title={!isLoaded ? 'Buffering…' : undefined}
               >
                 {isPlaying ? <Pause size={13} /> : <Play size={13} />}
               </button>
