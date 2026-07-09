@@ -4,25 +4,25 @@
  * ChapterFour.tsx
  * "If I could keep a few moments forever..."
  *
- * A constellation of 11 memory nodes laid out on an SVG canvas.
- * Faint lines connect them like a star chart.
- * Each node is a glowing point — tap/click to expand the memory.
- * Only one memory is open at a time.
+ * Constellation interaction:
+ *   Clicking a node opens the matching memory panel AND smooth-scrolls
+ *   the page so that panel is centered in the viewport.  The panel then
+ *   briefly pulses with a violet glow for ~2 seconds before fading back
+ *   to its normal appearance.
  *
- * Layout strategy:
- * - The canvas is a fixed-aspect SVG (viewBox 0 0 680 520 on desktop,
- *   0 0 360 680 on mobile) so positions are consistent across screen sizes.
- * - Node positions are defined as percentages of the viewBox so they
- *   scale correctly with the SVG's natural scaling.
- * - The open memory panel renders as an HTML overlay positioned
- *   relative to the canvas wrapper — not inside the SVG — so text
- *   renders with full browser quality and accessibility.
+ * Ref strategy:
+ *   A Map<number, HTMLDivElement> is stored in a useRef and never causes
+ *   re-renders.  When AnimatePresence mounts a memory panel it registers
+ *   its root element into the map via a ref-callback.  The click handler
+ *   reads from the map — no querySelector, no getElementById.
  *
- * Accessibility:
- * - Each node is a <button> rendered via foreignObject inside SVG,
- *   OR — simpler and more reliable — the SVG is purely decorative
- *   and the interactive buttons are absolutely positioned HTML
- *   elements over the canvas. This approach is used here.
+ *   Map key  = memory.id  (1–11)
+ *   Map value = the motion.div root element of that panel
+ *
+ *   The map persists across re-renders because it lives in a ref.
+ *   Old entries are never stale because AnimatePresence always unmounts
+ *   the previous panel before mounting the new one — the ref-callback's
+ *   cleanup leg (called with null) removes the entry automatically.
  */
 
 import {
@@ -30,14 +30,13 @@ import {
   useCallback,
   useRef,
   useEffect,
-  type ReactNode,
 } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import FadeIn    from '@/components/ui/FadeIn';
-import Container from '@/components/ui/Container';
+import FadeIn       from '@/components/ui/FadeIn';
+import Container    from '@/components/ui/Container';
 import BobEasterEgg from '@/components/ui/BobEasterEgg';
 
-// ─── Memory data ─────────────────────────────────────────────────────────
+// ─── Memory data ──────────────────────────────────────────────────────────
 
 interface Memory {
   id:    number;
@@ -46,80 +45,33 @@ interface Memory {
 }
 
 const MEMORIES: Memory[] = [
-  {
-    id: 1,
-    title: 'Cyberpunk Edgerunners',
-    text:  'Watching Cyberpunk together somehow made that moon screenshot even more special.',
-  },
-  {
-    id: 2,
-    title: 'La La Land',
-    text:  'City of Stars will probably remind me of this website for a long time.',
-  },
-  {
-    id: 3,
-    title: 'Off Campus',
-    text:  'Somehow we managed to binge another thing together.',
-  },
-  {
-    id: 4,
-    title: 'Genshin',
-    text:  'Logging in somehow became less about resin and more about hanging out.',
-  },
-  {
-    id: 5,
-    title: 'Roblox',
-    text:  'Funny that Roblox ended up becoming where all of this quietly started.',
-  },
-  {
-    id: 6,
-    title: 'Naruto & Hinata',
-    text:  'Matching those blind boxes was honestly adorable.',
-  },
-  {
-    id: 7,
-    title: 'The Drunk Texts',
-    text:  'I told you not to drink.\nYou definitely didn\'t listen.\nBut your drunk texts were still ridiculously funny.',
-  },
-  {
-    id: 8,
-    title: 'Secret Piercing',
-    text:  'You secretly got your ears pierced. That was one of my favorite unexpected updates.',
-  },
-  {
-    id: 9,
-    title: 'Canada & China',
-    text:  'Thank you for letting me see little pieces of your adventures.',
-  },
-  {
-    id: 10,
-    title: 'Desk Cleanup',
-    text:  'Somehow you made cleaning my setup feel entertaining.',
-  },
-  {
-    id: 11,
-    title: 'The Late Nights',
-    text:  'There were nights when you felt sad.\nIf staying awake a little longer meant you didn\'t have to feel alone...\nI never really minded.',
-  },
+  { id: 1,  title: 'Cyberpunk Edgerunners', text: 'Watching Cyberpunk together somehow made that moon screenshot even more special.' },
+  { id: 2,  title: 'La La Land',            text: 'City of Stars will probably remind me of this website for a long time.' },
+  { id: 3,  title: 'Off Campus',            text: 'Somehow we managed to binge another thing together.' },
+  { id: 4,  title: 'Genshin',               text: 'Logging in somehow became less about resin and more about hanging out.' },
+  { id: 5,  title: 'Roblox',                text: 'Funny that Roblox ended up becoming where all of this quietly started.' },
+  { id: 6,  title: 'Naruto & Hinata',       text: 'Matching those blind boxes was honestly adorable.' },
+  { id: 7,  title: 'The Drunk Texts',       text: 'I told you not to drink.\nYou definitely didn\'t listen.\nBut your drunk texts were still ridiculously funny.' },
+  { id: 8,  title: 'Secret Piercing',       text: 'You secretly got your ears pierced. That was one of my favorite unexpected updates.' },
+  { id: 9,  title: 'Canada & China',        text: 'Thank you for letting me see little pieces of your adventures.' },
+  { id: 10, title: 'Desk Cleanup',          text: 'Somehow you made cleaning my setup feel entertaining.' },
+  { id: 11, title: 'The Late Nights',       text: 'There were nights when you felt sad.\nIf staying awake a little longer meant you didn\'t have to feel alone...\nI never really minded.' },
 ];
 
 // ─── Node positions ───────────────────────────────────────────────────────
-// Two layout sets: desktop (680×520) and mobile (360×680).
-// Values are absolute SVG units within those viewBoxes.
-// Arranged so they form a loose, organic star-chart shape.
 
 const DESKTOP_NODES = [
-  { id: 1,  x: 120, y: 80  },  // top-left cluster
-  { id: 2,  x: 280, y: 55  },  // top center
-  { id: 3,  x: 460, y: 95  },  // top-right
-  { id: 4,  x: 580, y: 185 },  // right
-  { id: 5,  x: 510, y: 300 },  // right-center
-  { id: 6,  x: 340, y: 200 },  // center
-  { id: 7,  x: 180, y: 240 },  // left-center
-  { id: 8,  x: 70,  y: 320 },  // left
-  { id: 9,  x: 200, y: 400 },  // lower-left
-  { id: 10, x: 400, y: 420 },  // lower-center
-  { id: 11, x: 580, y: 440 },  // lower-right
+  { id: 1,  x: 120, y: 80  },
+  { id: 2,  x: 280, y: 55  },
+  { id: 3,  x: 460, y: 95  },
+  { id: 4,  x: 580, y: 185 },
+  { id: 5,  x: 510, y: 300 },
+  { id: 6,  x: 340, y: 200 },
+  { id: 7,  x: 180, y: 240 },
+  { id: 8,  x: 70,  y: 320 },
+  { id: 9,  x: 200, y: 400 },
+  { id: 10, x: 400, y: 420 },
+  { id: 11, x: 580, y: 440 },
 ];
 
 const MOBILE_NODES = [
@@ -136,7 +88,6 @@ const MOBILE_NODES = [
   { id: 11, x: 60,  y: 570 },
 ];
 
-// Constellation edges — pairs of node ids to connect with faint lines
 const EDGES: [number, number][] = [
   [1, 2], [2, 3], [3, 4], [4, 5],
   [5, 6], [6, 2], [6, 7], [7, 1],
@@ -145,8 +96,6 @@ const EDGES: [number, number][] = [
 ];
 
 // ─── Constellation SVG ────────────────────────────────────────────────────
-// Pure decorative layer: lines + static dot markers.
-// Interactive buttons are layered above as HTML, not SVG.
 
 interface ConstellationSVGProps {
   nodes:   typeof DESKTOP_NODES;
@@ -164,7 +113,6 @@ function ConstellationSVG({ nodes, viewBox, openId }: ConstellationSVGProps) {
       aria-hidden="true"
       style={{ display: 'block', overflow: 'visible' }}
     >
-      {/* ── Background glow field ───────────────────────────────── */}
       <defs>
         <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
           <stop offset="0%"   stopColor="#89CFF0" stopOpacity="0.35" />
@@ -176,7 +124,6 @@ function ConstellationSVG({ nodes, viewBox, openId }: ConstellationSVGProps) {
         </radialGradient>
       </defs>
 
-      {/* ── Constellation lines ─────────────────────────────────── */}
       {EDGES.map(([a, b], i) => {
         const na = nodeMap[a];
         const nb = nodeMap[b];
@@ -193,33 +140,20 @@ function ConstellationSVG({ nodes, viewBox, openId }: ConstellationSVGProps) {
         );
       })}
 
-      {/* ── Node dots ───────────────────────────────────────────── */}
       {nodes.map(node => {
         const isOpen = node.id === openId;
         return (
           <g key={node.id}>
-            {/* Outer glow disc */}
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={isOpen ? 18 : 12}
+            <circle cx={node.x} cy={node.y} r={isOpen ? 18 : 12}
               fill={isOpen ? 'url(#nodeGlowOpen)' : 'url(#nodeGlow)'}
               style={{ transition: 'r 0.4s ease' }}
             />
-            {/* Inner dot */}
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={isOpen ? 4 : 2.5}
+            <circle cx={node.x} cy={node.y} r={isOpen ? 4 : 2.5}
               fill={isOpen ? '#B8A8E3' : '#89CFF0'}
               opacity={isOpen ? 1 : 0.75}
               style={{ transition: 'r 0.4s ease, fill 0.4s ease' }}
             />
-            {/* Tiny satellite dot — gives stars the classic two-ring look */}
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={isOpen ? 7 : 5}
+            <circle cx={node.x} cy={node.y} r={isOpen ? 7 : 5}
               fill="none"
               stroke={isOpen ? 'rgba(184,168,227,0.3)' : 'rgba(137,207,240,0.18)'}
               strokeWidth="0.5"
@@ -233,16 +167,23 @@ function ConstellationSVG({ nodes, viewBox, openId }: ConstellationSVGProps) {
 }
 
 // ─── Memory panel ─────────────────────────────────────────────────────────
-// Rendered as a centered overlay below the constellation canvas.
-// Appears/disappears with a gentle fade — never interrupts the layout.
 
 interface MemoryPanelProps {
-  memory:       Memory | null;
-  onClose:      () => void;
-  shouldReduce: boolean;
+  memory:        Memory | null;
+  onClose:       () => void;
+  shouldReduce:  boolean;
+  highlighted:   boolean;
+  /** Ref-callback: registers/unregisters this panel's DOM element in the parent map */
+  onRef:         (id: number, el: HTMLDivElement | null) => void;
 }
 
-function MemoryPanel({ memory, onClose, shouldReduce }: MemoryPanelProps) {
+function MemoryPanel({
+  memory,
+  onClose,
+  shouldReduce,
+  highlighted,
+  onRef,
+}: MemoryPanelProps) {
   const lines = memory?.text.split('\n') ?? [];
 
   return (
@@ -250,90 +191,83 @@ function MemoryPanel({ memory, onClose, shouldReduce }: MemoryPanelProps) {
       {memory && (
         <motion.div
           key={memory.id}
+          // Register this element in the parent's ref map when it mounts,
+          // and deregister when it unmounts (el === null).
+          ref={(el) => onRef(memory.id, el)}
           initial={{ opacity: 0, y: shouldReduce ? 0 : 12 }}
-          animate={{ opacity: 1, y: 0 }}
+          animate={{
+            opacity:   1,
+            y:         0,
+            // Highlight pulse: violet glow fades in and out
+            boxShadow: highlighted && !shouldReduce
+              ? [
+                  '0 2px 8px rgba(0,0,0,0.24), 0 12px 32px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.04)',
+                  '0 0 0 2px rgba(184,168,227,0.55), 0 4px 32px rgba(184,168,227,0.30), 0 12px 40px rgba(0,0,0,0.28)',
+                  '0 2px 8px rgba(0,0,0,0.24), 0 12px 32px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.04)',
+                ]
+              : '0 2px 8px rgba(0,0,0,0.24), 0 12px 32px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.04)',
+          }}
           exit={{ opacity: 0, y: shouldReduce ? 0 : -8 }}
-          transition={{ duration: shouldReduce ? 0.01 : 0.55, ease: [0.25, 0.1, 0.25, 1] }}
+          transition={{
+            opacity:   { duration: shouldReduce ? 0.01 : 0.55, ease: [0.25, 0.1, 0.25, 1] },
+            y:         { duration: shouldReduce ? 0.01 : 0.55, ease: [0.25, 0.1, 0.25, 1] },
+            // The pulse runs once over 2 seconds — matches the highlight timeout
+            boxShadow: { duration: 2, ease: 'easeInOut', times: [0, 0.4, 1] },
+          }}
           style={{
-            marginTop:       'clamp(1.5rem, 4vw, 2.5rem)',
-            background:      `linear-gradient(
-              135deg,
+            marginTop:            'clamp(1.5rem, 4vw, 2.5rem)',
+            background:           `linear-gradient(135deg,
               rgba(16, 30, 58, 0.82) 0%,
               rgba(14, 26, 52, 0.76) 50%,
-              rgba(20, 18, 52, 0.80) 100%
-            )`,
-            backdropFilter:  'blur(18px)',
+              rgba(20, 18, 52, 0.80) 100%)`,
+            backdropFilter:       'blur(18px)',
             WebkitBackdropFilter: 'blur(18px)',
-            border:          '1px solid rgba(184,168,227,0.18)',
-            borderRadius:    '16px',
-            padding:         'clamp(1.25rem, 4vw, 2rem)',
-            boxShadow:       `
-              0 2px  8px  rgba(0,0,0,0.24),
-              0 12px 32px rgba(0,0,0,0.20),
-              inset 0 1px 0 rgba(255,255,255,0.04)
-            `,
-            position:        'relative',
+            border:               '1px solid rgba(184,168,227,0.18)',
+            borderRadius:         '16px',
+            padding:              'clamp(1.25rem, 4vw, 2rem)',
+            position:             'relative',
           }}
         >
-          {/* Close tap target — full panel is also tappable */}
+          {/* Close button */}
           <button
             onClick={onClose}
             aria-label="Close memory"
             style={{
-              position:   'absolute',
-              top:        '12px',
-              right:      '14px',
-              background: 'none',
-              border:     'none',
-              cursor:     'pointer',
-              padding:    '6px',
-              color:      'rgba(203,213,225,0.35)',
-              fontSize:   '1rem',
-              lineHeight: 1,
-              // Min touch target
-              minWidth:   '32px',
-              minHeight:  '32px',
-              display:    'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              position:  'absolute', top: '12px', right: '14px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '6px', color: 'rgba(203,213,225,0.35)',
+              fontSize: '1rem', lineHeight: 1,
+              minWidth: '32px', minHeight: '32px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-          >
-            ×
-          </button>
+          >×</button>
 
-          {/* Memory title */}
-          <p
-            style={{
-              fontFamily:    'var(--font-inter)',
-              fontSize:      'clamp(0.6875rem, 1.6vw, 0.75rem)',
-              fontWeight:    500,
-              letterSpacing: '0.18em',
-              textTransform: 'uppercase',
-              color:         'rgba(184,168,227,0.65)',
-              marginBottom:  '0.75rem',
-            }}
-          >
+          {/* Title */}
+          <p style={{
+            fontFamily:    'var(--font-inter)',
+            fontSize:      'clamp(0.6875rem, 1.6vw, 0.75rem)',
+            fontWeight:    500,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color:         'rgba(184,168,227,0.65)',
+            marginBottom:  '0.75rem',
+          }}>
             {memory.title}
           </p>
 
-          {/* Memory text — supports multi-line */}
+          {/* Text */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5em' }}>
             {lines.map((line, i) => (
-              <p
-                key={i}
-                style={{
-                  fontFamily:    'var(--font-cormorant)',
-                  fontSize:      'clamp(1.0625rem, 3vw, 1.3125rem)',
-                  fontWeight:    300,
-                  fontStyle:     'italic',
-                  lineHeight:    1.65,
-                  color:         i === 0
-                    ? 'rgba(248,250,252,0.85)'
-                    : 'rgba(203,213,225,0.68)',
-                  margin:        0,
-                  paddingLeft:   (i > 0 && lines.length > 1) ? '0.5em' : 0,
-                }}
-              >
+              <p key={i} style={{
+                fontFamily:  'var(--font-cormorant)',
+                fontSize:    'clamp(1.0625rem, 3vw, 1.3125rem)',
+                fontWeight:  300,
+                fontStyle:   'italic',
+                lineHeight:  1.65,
+                color:       i === 0 ? 'rgba(248,250,252,0.85)' : 'rgba(203,213,225,0.68)',
+                margin:      0,
+                paddingLeft: (i > 0 && lines.length > 1) ? '0.5em' : 0,
+              }}>
                 {line}
               </p>
             ))}
@@ -345,8 +279,6 @@ function MemoryPanel({ memory, onClose, shouldReduce }: MemoryPanelProps) {
 }
 
 // ─── Node button ──────────────────────────────────────────────────────────
-// An invisible touch-target button positioned exactly over each SVG node.
-// The SVG draws the visuals; this element handles interaction.
 
 interface NodeButtonProps {
   node:         { id: number; x: number; y: number };
@@ -354,16 +286,11 @@ interface NodeButtonProps {
   isOpen:       boolean;
   onClick:      (id: number) => void;
   shouldReduce: boolean;
-  /** viewBox dimensions so we can calculate % position */
   vbW:          number;
   vbH:          number;
 }
 
-function NodeButton({
-  node, title, isOpen, onClick, shouldReduce, vbW, vbH,
-}: NodeButtonProps) {
-  // Position as % of viewBox — the SVG scales to fill its container
-  // so these % positions will track the dots exactly.
+function NodeButton({ node, title, isOpen, onClick, shouldReduce, vbW, vbH }: NodeButtonProps) {
   const leftPct = (node.x / vbW) * 100;
   const topPct  = (node.y / vbH) * 100;
 
@@ -373,37 +300,21 @@ function NodeButton({
       aria-label={`Memory: ${title}${isOpen ? ' (open)' : ''}`}
       aria-pressed={isOpen}
       style={{
-        position:        'absolute',
-        left:            `${leftPct}%`,
-        top:             `${topPct}%`,
-        transform:       'translate(-50%, -50%)',
-        // Touch target: 44×44 minimum
-        width:           '44px',
-        height:          '44px',
-        borderRadius:    '50%',
-        background:      'transparent',
-        border:          'none',
-        cursor:          'pointer',
-        // Show title label as tooltip via title attribute
-        // Visible label renders below on hover via CSS
-        zIndex:          2,
-        display:         'flex',
-        alignItems:      'center',
-        justifyContent:  'center',
+        position: 'absolute', left: `${leftPct}%`, top: `${topPct}%`,
+        transform: 'translate(-50%, -50%)',
+        width: '44px', height: '44px',
+        borderRadius: '50%', background: 'transparent', border: 'none',
+        cursor: 'pointer', zIndex: 2,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
       whileHover={shouldReduce ? undefined : { scale: 1.3 }}
       whileTap={shouldReduce   ? undefined : { scale: 0.9 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
       title={title}
     >
-      {/* Visually hidden label for screen readers */}
       <span style={{
-        position: 'absolute',
-        width:    '1px',
-        height:   '1px',
-        overflow: 'hidden',
-        clip:     'rect(0,0,0,0)',
-        whiteSpace: 'nowrap',
+        position: 'absolute', width: '1px', height: '1px',
+        overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap',
       }}>
         {title}
       </span>
@@ -415,7 +326,6 @@ function NodeButton({
 
 function useIsMobile(breakpoint = 560): boolean {
   const [isMobile, setIsMobile] = useState(false);
-
   useEffect(() => {
     const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
     setIsMobile(mq.matches);
@@ -423,7 +333,6 @@ function useIsMobile(breakpoint = 560): boolean {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, [breakpoint]);
-
   return isMobile;
 }
 
@@ -432,18 +341,86 @@ function useIsMobile(breakpoint = 560): boolean {
 export default function ChapterFour() {
   const shouldReduce = useReducedMotion() ?? false;
   const isMobile     = useIsMobile();
-  const [openId, setOpenId] = useState<number | null>(null);
+
+  const [openId,        setOpenId]        = useState<number | null>(null);
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+
+  // ── Ref map: memory id → panel DOM element ─────────────────────────
+  // Stored in a ref (not state) so reads/writes never trigger re-renders.
+  const panelRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // Auto-clear for the highlight timeout
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Ref-callback passed to MemoryPanel — called by React on mount/unmount
+  const handlePanelRef = useCallback((id: number, el: HTMLDivElement | null) => {
+    if (el) {
+      panelRefs.current.set(id, el);
+    } else {
+      panelRefs.current.delete(id);
+    }
+  }, []);
+
+  const handleNodeClick = useCallback((id: number) => {
+    const isClosing = id === openId;
+
+    // Toggle open/closed
+    setOpenId(isClosing ? null : id);
+
+    if (isClosing) {
+      // Closing — clear any active highlight
+      setHighlightedId(null);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      return;
+    }
+
+    // Opening a new memory ─────────────────────────────────────────────
+    // Clear previous highlight immediately
+    setHighlightedId(null);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+
+    // The panel element won't exist yet (AnimatePresence hasn't mounted it).
+    // Defer the scroll + highlight until after React has committed the render.
+    // A two-step RAF gives Framer Motion time to start its entry animation
+    // before we call scrollIntoView, avoiding a layout-before-paint jank.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = panelRefs.current.get(id);
+        if (el) {
+          el.scrollIntoView({
+            behavior: shouldReduce ? 'auto' : 'smooth',
+            block:    'center',
+          });
+        }
+
+        // Trigger highlight — suppressed when reduced motion is on
+        if (!shouldReduce) {
+          setHighlightedId(id);
+          highlightTimer.current = setTimeout(() => {
+            setHighlightedId(null);
+          }, 2000);
+        }
+      });
+    });
+  }, [openId, shouldReduce]);
+
+  const handleClose = useCallback(() => {
+    setOpenId(null);
+    setHighlightedId(null);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+  }, []);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    };
+  }, []);
 
   const nodes   = isMobile ? MOBILE_NODES : DESKTOP_NODES;
   const vbW     = isMobile ? 360 : 680;
   const vbH     = isMobile ? 680 : 520;
   const viewBox = `0 0 ${vbW} ${vbH}`;
-
-  const handleNodeClick = useCallback((id: number) => {
-    setOpenId(prev => (prev === id ? null : id));
-  }, []);
-
-  const handleClose = useCallback(() => setOpenId(null), []);
 
   const openMemory = MEMORIES.find(m => m.id === openId) ?? null;
 
@@ -451,96 +428,67 @@ export default function ChapterFour() {
     <section
       id="chapter-four"
       aria-labelledby="chapter-four-title"
-      style={{
-        paddingTop:    'clamp(5rem, 12vw, 8rem)',
-        paddingBottom: 'clamp(6rem, 14vw, 10rem)',
-      }}
+      style={{ paddingTop: 'clamp(5rem, 12vw, 8rem)', paddingBottom: 'clamp(6rem, 14vw, 10rem)' }}
     >
       <Container>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
 
-          {/* ── Chapter badge ───────────────────────────────────────── */}
+          {/* ── Chapter badge ──────────────────────────────────────── */}
           <FadeIn>
             <div style={{ marginBottom: '2rem' }}>
               <span className="chapter-badge">Chapter Four</span>
             </div>
           </FadeIn>
 
-          {/* ── Title ───────────────────────────────────────────────── */}
+          {/* ── Title ─────────────────────────────────────────────── */}
           <FadeIn delay={0.1}>
             <h2
               id="chapter-four-title"
               className="text-glow"
               style={{
-                fontFamily:    'var(--font-cormorant)',
-                fontSize:      'clamp(2rem, 7vw, 3.5rem)',
-                fontWeight:    300,
-                lineHeight:    1.2,
-                letterSpacing: '-0.01em',
-                color:         '#F8FAFC',
-                marginBottom:  '1rem',
+                fontFamily: 'var(--font-cormorant)', fontSize: 'clamp(2rem, 7vw, 3.5rem)',
+                fontWeight: 300, lineHeight: 1.2, letterSpacing: '-0.01em',
+                color: '#F8FAFC', marginBottom: '1rem',
               }}
             >
               If I could keep a few moments forever...
             </h2>
           </FadeIn>
 
-          {/* ── Subtitle ────────────────────────────────────────────── */}
+          {/* ── Subtitle ──────────────────────────────────────────── */}
           <FadeIn delay={0.2}>
-            <p
-              style={{
-                fontFamily:    'var(--font-inter)',
-                fontSize:      'clamp(0.75rem, 1.8vw, 0.875rem)',
-                fontWeight:    400,
-                letterSpacing: '0.18em',
-                textTransform: 'uppercase',
-                color:         'rgba(137,207,240,0.5)',
-              }}
-            >
+            <p style={{
+              fontFamily: 'var(--font-inter)', fontSize: 'clamp(0.75rem, 1.8vw, 0.875rem)',
+              fontWeight: 400, letterSpacing: '0.18em', textTransform: 'uppercase',
+              color: 'rgba(137,207,240,0.5)',
+            }}>
               These would probably be the first ones I&apos;d save.
             </p>
           </FadeIn>
 
-          {/* ── Breathing space ─────────────────────────────────────── */}
           <div style={{ height: 'clamp(2.5rem, 6vw, 4rem)' }} aria-hidden="true" />
 
-          {/* ── Hint text ───────────────────────────────────────────── */}
+          {/* ── Hint ──────────────────────────────────────────────── */}
           <FadeIn delay={0.3} direction="none">
-            <p
-              style={{
-                fontFamily:    'var(--font-inter)',
-                fontSize:      'clamp(0.6875rem, 1.5vw, 0.75rem)',
-                fontWeight:    300,
-                letterSpacing: '0.08em',
-                color:         'rgba(137,207,240,0.35)',
-                textAlign:     'center',
-                marginBottom:  'clamp(1rem, 3vw, 1.75rem)',
-              }}
-            >
+            <p style={{
+              fontFamily: 'var(--font-inter)', fontSize: 'clamp(0.6875rem, 1.5vw, 0.75rem)',
+              fontWeight: 300, letterSpacing: '0.08em',
+              color: 'rgba(137,207,240,0.35)', textAlign: 'center',
+              marginBottom: 'clamp(1rem, 3vw, 1.75rem)',
+            }}>
               tap a star to open a memory
             </p>
           </FadeIn>
 
-          {/* ── Constellation canvas ─────────────────────────────────── */}
+          {/* ── Constellation canvas ──────────────────────────────── */}
           <FadeIn direction="none">
-            {/*
-              Outer wrapper is `position: relative` so the absolutely
-              positioned NodeButtons track the SVG coordinate system.
-              The SVG scales to fill 100% width; buttons use % positions
-              matching the SVG viewBox proportions.
-            */}
             <div
               style={{ position: 'relative', width: '100%' }}
               role="group"
               aria-label="Memory constellation — tap a star to read a memory"
             >
-              <ConstellationSVG
-                nodes={nodes}
-                viewBox={viewBox}
-                openId={openId}
-              />
+              <ConstellationSVG nodes={nodes} viewBox={viewBox} openId={openId} />
 
-              {/* Interactive buttons layered over the SVG */}
               {nodes.map(node => (
                 <NodeButton
                   key={node.id}
@@ -556,51 +504,49 @@ export default function ChapterFour() {
             </div>
           </FadeIn>
 
-          {/* ── Expanded memory panel ────────────────────────────────── */}
+          {/* ── Memory panel ──────────────────────────────────────── */}
           <MemoryPanel
             memory={openMemory}
             onClose={handleClose}
             shouldReduce={shouldReduce}
+            highlighted={highlightedId === openId}
+            onRef={handlePanelRef}
           />
 
-          {/* ── Generous space before closing sentence ───────────────── */}
           <div style={{ height: 'clamp(4rem, 10vw, 7rem)' }} aria-hidden="true" />
 
-          {/* ── Closing sentence ─────────────────────────────────────── */}
+          {/* ── Closing sentence ──────────────────────────────────── */}
           <FadeIn direction="none">
-            <p
-              style={{
-                fontFamily:    'var(--font-cormorant)',
-                fontSize:      'clamp(1.125rem, 3.2vw, 1.5rem)',
-                fontWeight:    300,
-                fontStyle:     'italic',
-                color:         'rgba(248,250,252,0.62)',
-                lineHeight:    1.65,
-                textAlign:     'center',
-                maxWidth:      '480px',
-                marginInline:  'auto',
-                letterSpacing: '0.01em',
-              }}
-            >
-              I think the best memories are usually the ordinary ones.
-            </p>
+            <div style={{ position: 'relative' }}>
+              <p style={{
+                fontFamily: 'var(--font-cormorant)', fontSize: 'clamp(1.125rem, 3.2vw, 1.5rem)',
+                fontWeight: 300, fontStyle: 'italic', color: 'rgba(248,250,252,0.62)',
+                lineHeight: 1.65, textAlign: 'center', maxWidth: '480px',
+                marginInline: 'auto', letterSpacing: '0.01em',
+              }}>
+                I think the best memories are usually the ordinary ones.
+              </p>
+              {/* Bob sits quietly beside the closing line */}
+              <BobEasterEgg
+                style={{
+                  position: 'absolute',
+                  bottom:   0,
+                  right:    'clamp(0px, 3%, 24px)',
+                }}
+              />
+            </div>
           </FadeIn>
 
-          {/* ── Fade into next section ────────────────────────────────── */}
+          {/* ── Fade into next section ────────────────────────────── */}
           <FadeIn direction="none">
             <div
               aria-hidden="true"
               style={{
-                height:      '1px',
-                marginTop:   'clamp(3rem, 7vw, 5rem)',
-                background:  `linear-gradient(
-                  to right,
-                  transparent 0%,
-                  rgba(137,207,240,0.15) 30%,
-                  rgba(184,168,227,0.15) 70%,
-                  transparent 100%
-                )`,
-                maskImage:    'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%)',
+                height: '1px', marginTop: 'clamp(3rem, 7vw, 5rem)',
+                background: `linear-gradient(to right,
+                  transparent 0%, rgba(137,207,240,0.15) 30%,
+                  rgba(184,168,227,0.15) 70%, transparent 100%)`,
+                maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%)',
                 WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%)',
               }}
             />
