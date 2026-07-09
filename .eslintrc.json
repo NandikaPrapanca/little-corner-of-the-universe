@@ -1,0 +1,11 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    // Allow empty interfaces during foundation phase
+    "@typescript-eslint/no-empty-interface": "warn",
+    // Require alt text on images (accessibility)
+    "jsx-a11y/alt-text": "error",
+    // Prefer const
+    "prefer-const": "error"
+  }
+}
