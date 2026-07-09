@@ -2,102 +2,128 @@
 
 /**
  * JourneyIndicator.tsx
- * Six tiny fixed stars at the bottom-center of the screen.
+ * Six tiny fixed stars — one per story section.
  *
- * Each star corresponds to one section of the story:
- *   1 — landing
- *   2 — chapter-one
- *   3 — chapter-two
- *   4 — chapter-three
- *   5 — chapter-four
- *   6 — pom-transition (letter / ending)
+ * Detection logic:
+ *   We observe all six sections with IntersectionObserver.
+ *   On each callback we also read each element's boundingClientRect
+ *   and pick the section whose top edge is closest to (and above)
+ *   the viewport centre. That section is the single active star.
+ *   This guarantees exactly one star is active at all times and
+ *   works correctly when scrolling in either direction.
  *
- * A star becomes "active" when its section is ≥ 45% visible in the
- * viewport (measured by IntersectionObserver). Scrolling backward
- * correctly de-activates stars — the active index always reflects
- * the highest section that is currently at-or-past the threshold.
+ * Sections observed (in page order):
+ *   landing · chapter-one · chapter-two · chapter-three · chapter-four · ending
  *
- * Visual design:
- *   Active  — warm ivory (#F6F1E8), scale 1, soft glow
- *   Inactive — low-opacity blue tint, scale 0.75, no glow
- *   Activation — scale 0.7 → 1, opacity 0 → 1, brief glow pulse, 500ms
+ * Why "ending" not "pom-transition":
+ *   The Pom section is a transition — it has no indicator star.
+ *   The final star lights when the reader reaches the Ending section.
  *
- * This must feel like stars quietly appearing in the night sky.
- * Not a progress bar. Not a nav. Just six patient stars.
+ * Threshold choice:
+ *   threshold: 0  — fires as soon as any pixel enters the viewport.
+ *   We do NOT use a high threshold because ChapterTwo and ChapterThree
+ *   are 2000–4000px tall on mobile; they can never reach 45% visibility.
+ *
+ * rootMargin: '-1px 0px -1px 0px'
+ *   Prevents false-positive fires at the exact top/bottom edge.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion }     from 'framer-motion';
 
-// ─── Section mapping ──────────────────────────────────────────────────────
+// ─── Section order ────────────────────────────────────────────────────────
+// Must match the rendered page order exactly.
 
-const SECTIONS: { id: string; label: string }[] = [
-  { id: 'landing',         label: 'Opening'       },
-  { id: 'chapter-one',     label: 'Chapter One'   },
-  { id: 'chapter-two',     label: 'Chapter Two'   },
-  { id: 'chapter-three',   label: 'Chapter Three' },
-  { id: 'chapter-four',    label: 'Chapter Four'  },
-  { id: 'pom-transition',  label: 'The Letter'    },
-];
+const SECTIONS = [
+  { id: 'landing',       label: 'Opening'       },
+  { id: 'chapter-one',   label: 'Chapter One'   },
+  { id: 'chapter-two',   label: 'Chapter Two'   },
+  { id: 'chapter-three', label: 'Chapter Three' },
+  { id: 'chapter-four',  label: 'Chapter Four'  },
+  { id: 'ending',        label: 'Ending'        },
+] as const;
 
-// ─── Single star ──────────────────────────────────────────────────────────
+// ─── Pick the "current" section ───────────────────────────────────────────
+// Among all elements that are currently intersecting the viewport,
+// return the one whose top edge is closest to (and ≤) the viewport midpoint.
+// This gives a stable, single active section regardless of scroll speed.
 
-interface StarProps {
-  active:       boolean;
-  wasActive:    boolean; // true if it was previously inactive and just became active
-  shouldReduce: boolean;
-  label:        string;
-  index:        number;
+function pickActiveId(
+  ids:        readonly string[],
+  intersecting: Set<string>,
+): string | null {
+  const mid = window.innerHeight / 2;
+  let   best: string | null = null;
+  let   bestDist            = Infinity;
+
+  for (const id of ids) {
+    if (!intersecting.has(id)) continue;
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    // Distance from section top to viewport midpoint.
+    // Sections above the midpoint have rect.top < mid.
+    // We prefer the section whose top is closest to mid from above.
+    const dist = Math.abs(rect.top - mid);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best     = id;
+    }
+  }
+
+  return best;
 }
 
-function Star({ active, wasActive, shouldReduce, label, index }: StarProps) {
-  // Four-point star SVG path in a 10×10 viewBox
+// ─── Star component ───────────────────────────────────────────────────────
+
+interface StarProps {
+  active:        boolean;
+  justActivated: boolean; // true on the transition inactive→active
+  shouldReduce:  boolean;
+  label:         string;
+  index:         number;
+}
+
+function Star({ active, justActivated, shouldReduce, label, index }: StarProps) {
   const starPath = 'M5 0 L5.55 4.45 L10 5 L5.55 5.55 L5 10 L4.45 5.55 L0 5 L4.45 4.45 Z';
 
   return (
     <motion.div
-      // Outer wrapper handles position/spacing — inner handles scale
-      style={{
-        position:   'relative',
-        display:    'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width:  '20px',
-        height: '20px',
-      }}
-      // Accessible label for screen readers (visually hidden via SVG aria-hidden)
       role="img"
-      aria-label={`${label}: ${active ? 'visited' : 'not yet reached'}`}
+      aria-label={`${label}: ${active ? 'current section' : 'not yet reached'}`}
+      style={{
+        position:       'relative',
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'center',
+        width:          '20px',
+        height:         '20px',
+      }}
     >
-      {/* ── Glow halo — only visible when active ───────────────── */}
+      {/* Glow halo — only when active */}
       {active && (
         <motion.div
           aria-hidden="true"
           style={{
-            position:     'absolute',
-            inset:        '-6px',
-            borderRadius: '50%',
-            background:   'radial-gradient(circle, rgba(246,241,232,0.22) 0%, transparent 70%)',
+            position:      'absolute',
+            inset:         '-6px',
+            borderRadius:  '50%',
+            background:    'radial-gradient(circle, rgba(246,241,232,0.22) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
-          // Brief pulse when first activating, then settle to a gentle breathe
-          initial={wasActive ? false : { opacity: 0, scale: 0.5 }}
+          initial={justActivated && !shouldReduce ? { opacity: 0, scale: 0.5 } : false}
           animate={
             shouldReduce
               ? { opacity: 1 }
-              : {
-                  opacity: [0.6, 1, 0.5],
-                  scale:   [0.9, 1.15, 0.95],
-                }
+              : { opacity: [0.6, 1, 0.5], scale: [0.9, 1.15, 0.95] }
           }
           transition={
             shouldReduce
               ? { duration: 0 }
               : {
-                  duration: 0.5,
-                  ease:     'easeOut',
-                  times:    [0, 0.4, 1],
-                  // After initial burst, loop a very slow breathe
+                  duration:    0.5,
+                  ease:        'easeOut',
+                  times:       [0, 0.4, 1],
                   repeat:      Infinity,
                   repeatDelay: 2.5,
                   repeatType:  'loop',
@@ -106,7 +132,7 @@ function Star({ active, wasActive, shouldReduce, label, index }: StarProps) {
         />
       )}
 
-      {/* ── The star itself ────────────────────────────────────── */}
+      {/* The star SVG */}
       <motion.svg
         aria-hidden="true"
         width="10"
@@ -114,17 +140,14 @@ function Star({ active, wasActive, shouldReduce, label, index }: StarProps) {
         viewBox="0 0 10 10"
         fill="none"
         style={{ display: 'block', willChange: 'transform, opacity' }}
-        // Entry animation when first becoming active
         initial={
-          shouldReduce || wasActive
-            ? false
-            : active
-              ? { opacity: 0, scale: 0.7 }
-              : false
+          justActivated && !shouldReduce
+            ? { opacity: 0, scale: 0.7 }
+            : false
         }
         animate={
           active
-            ? { opacity: 1,   scale: 1    }
+            ? { opacity: 1,    scale: 1    }
             : { opacity: 0.28, scale: 0.75 }
         }
         transition={
@@ -133,7 +156,7 @@ function Star({ active, wasActive, shouldReduce, label, index }: StarProps) {
             : {
                 duration: 0.5,
                 ease:     [0.25, 0.1, 0.25, 1],
-                delay:    active && !wasActive ? index * 0.02 : 0,
+                delay:    justActivated ? index * 0.02 : 0,
               }
         }
       >
@@ -146,84 +169,128 @@ function Star({ active, wasActive, shouldReduce, label, index }: StarProps) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────
 
 export default function JourneyIndicator() {
   const shouldReduce = useReducedMotion() ?? false;
+  const ids          = SECTIONS.map(s => s.id);
 
-  // Which sections are currently intersecting at ≥ 45%
-  const [intersecting, setIntersecting] = useState<Set<string>>(new Set());
-
-  // Previous active set — used to detect "first activation" for entry anim
-  const prevActiveRef = useRef<Set<string>>(new Set());
+  // Set of section IDs currently touching the viewport (any pixel visible)
+  const intersectingRef = useRef<Set<string>>(new Set());
+  // Single active ID — the section closest to viewport midpoint
+  const [activeId,  setActiveId]  = useState<string | null>('landing');
+  // Previous active — to detect justActivated
+  const prevActiveRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Wait for DOM to be ready before querying sections
-    const elements: { el: Element; id: string }[] = [];
-
-    for (const section of SECTIONS) {
-      const el = document.getElementById(section.id);
-      if (el) elements.push({ el, id: section.id });
+    // Resolve the active section and push to state
+    function update() {
+      const next = pickActiveId(ids, intersectingRef.current);
+      setActiveId(next);
     }
 
-    if (elements.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        setIntersecting(prev => {
-          const next = new Set(prev);
+    // Build the observer
+    function buildObserver(): IntersectionObserver {
+      return new IntersectionObserver(
+        (entries) => {
           for (const entry of entries) {
             const id = (entry.target as HTMLElement).id;
             if (entry.isIntersecting) {
-              next.add(id);
+              intersectingRef.current.add(id);
             } else {
-              next.delete(id);
+              intersectingRef.current.delete(id);
             }
           }
-          return next;
-        });
-      },
-      {
-        // 45% of the section must be visible to activate
-        threshold: 0.45,
-        // Use viewport as root
-        root: null,
-      },
-    );
-
-    for (const { el } of elements) {
-      observer.observe(el);
+          update();
+        },
+        {
+          // Fire as soon as any pixel is visible
+          threshold: 0,
+          // Small negative margin so sections right at the edge don't flicker
+          rootMargin: '-1px 0px -1px 0px',
+          root: null,
+        },
+      );
     }
 
-    return () => observer.disconnect();
+    let observer = buildObserver();
+
+    // Attach observer to all sections that exist now
+    function attachAll(obs: IntersectionObserver): string[] {
+      const missing: string[] = [];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) {
+          obs.observe(el);
+        } else {
+          missing.push(id);
+        }
+      }
+      return missing;
+    }
+
+    let missing = attachAll(observer);
+
+    // If any sections were missing (e.g. Letter inside AnimatePresence),
+    // poll briefly until they appear, then observe them too.
+    let pollId: ReturnType<typeof setInterval> | null = null;
+    if (missing.length > 0) {
+      let attempts = 0;
+      pollId = setInterval(() => {
+        attempts++;
+        const stillMissing: string[] = [];
+        for (const id of missing) {
+          const el = document.getElementById(id);
+          if (el) {
+            observer.observe(el);
+          } else {
+            stillMissing.push(id);
+          }
+        }
+        missing = stillMissing;
+        if (missing.length === 0 || attempts > 30) {
+          if (pollId) clearInterval(pollId);
+        }
+      }, 200);
+    }
+
+    // Re-evaluate active section on every scroll (lightweight — no DOM writes)
+    function onScroll() {
+      update();
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    // Seed: mark whatever is visible right now
+    update();
+
+    return () => {
+      observer.disconnect();
+      if (pollId) clearInterval(pollId);
+      window.removeEventListener('scroll', onScroll);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Build per-star state
   const stars = SECTIONS.map(section => {
-    const active    = intersecting.has(section.id);
-    const wasActive = prevActiveRef.current.has(section.id);
-    return { ...section, active, wasActive };
+    const active        = section.id === activeId;
+    const justActivated = active && prevActiveRef.current !== section.id;
+    return { ...section, active, justActivated };
   });
 
-  // Update prev ref after render
-  useEffect(() => {
-    prevActiveRef.current = new Set(intersecting);
-  });
-
-  // Don't render until at least one section exists (avoids SSR/hydration flash)
-  // We render the indicator always but with all stars inactive until scroll
+  // Update prev ref synchronously (before next render)
+  prevActiveRef.current = activeId;
 
   return (
     <div
-      aria-label="Story progress — six stars mark your journey through the story"
+      aria-label="Story progress"
       role="navigation"
       style={{
-        position: 'fixed',
-        bottom:   'clamp(18px, 3vw, 28px)',
-        left:     '50%',
+        position:  'fixed',
+        bottom:    'clamp(18px, 3vw, 28px)',
+        left:      '50%',
         transform: 'translateX(-50%)',
-        zIndex:   40,
-        // Pointer events only on the wrapper, not the space between stars
+        zIndex:    40,
         pointerEvents: 'none',
       }}
     >
@@ -232,20 +299,19 @@ export default function JourneyIndicator() {
           display:    'flex',
           alignItems: 'center',
           gap:        '12px',
-          // Very subtle pill background so stars are legible over any content
           background: 'rgba(7, 24, 39, 0.35)',
-          backdropFilter: 'blur(8px)',
+          backdropFilter:       'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           borderRadius: '999px',
-          padding: '6px 14px',
-          border: '1px solid rgba(137, 207, 240, 0.06)',
+          padding:      '6px 14px',
+          border:       '1px solid rgba(137, 207, 240, 0.06)',
         }}
       >
         {stars.map((star, i) => (
           <Star
             key={star.id}
             active={star.active}
-            wasActive={star.wasActive}
+            justActivated={star.justActivated}
             shouldReduce={shouldReduce}
             label={star.label}
             index={i}

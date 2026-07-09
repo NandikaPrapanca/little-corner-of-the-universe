@@ -4,11 +4,20 @@
  * AudioProvider.tsx
  * Shared audio context — single source of truth for all audio state.
  *
- * One HTMLAudioElement, created on mount, referenced via React context.
- * Both MusicPlayer and Landing's envelope button read from this same context.
+ * Audio starts ONLY after an explicit user interaction via playFaded().
+ * There is no autoplay.
  *
- * Audio only plays after an explicit user gesture (requestPlay).
- * Never autoplays on page load.
+ * Public interface (AudioContextValue):
+ *   isPlaying   — true while playing
+ *   isMuted     — true when muted
+ *   volume      — user's chosen volume (0–1), default 0.6
+ *   isLoaded    — true once 'canplaythrough' fires
+ *   hasError    — true if the file failed to load
+ *   playFaded   — start playback with a volume fade-in (for first interaction)
+ *   requestPlay — start playback at current volume (for button/envelope)
+ *   pause       — pause playback
+ *   toggleMute  — flip mute state
+ *   setVolume   — set volume imperatively (used by PomTransition duck)
  */
 
 import {
@@ -26,6 +35,8 @@ export interface AudioContextValue {
   volume:      number;
   isLoaded:    boolean;
   hasError:    boolean;
+  /** Start at volume 0 and fade to targetVolume over fadeMs. */
+  playFaded:   (targetVolume?: number, fadeMs?: number) => Promise<void>;
   requestPlay: () => Promise<void>;
   pause:       () => void;
   toggleMute:  () => void;
@@ -34,139 +45,194 @@ export interface AudioContextValue {
 
 export const AudioContext = createContext<AudioContextValue | null>(null);
 
+const AUDIO_SRC     = '/audio/city-of-stars.mp3';
+const TARGET_VOLUME = 0.6;
+const VIS_DUCK      = 0.4;
+
+// ─── Smooth volume fade ───────────────────────────────────────────────────
+
+function fadeVolume(
+  audio:      HTMLAudioElement,
+  target:     number,
+  durationMs: number,
+  steps:      number,
+): () => void {
+  const start    = audio.volume;
+  const delta    = target - start;
+  const stepMs   = durationMs / steps;
+  let   step     = 0;
+  let   timerId: ReturnType<typeof setTimeout>;
+  let   cancelled = false;
+
+  function tick() {
+    if (cancelled) return;
+    step++;
+    audio.volume = Math.min(1, Math.max(0, start + delta * (step / steps)));
+    if (step < steps) timerId = setTimeout(tick, stepMs);
+  }
+
+  timerId = setTimeout(tick, stepMs);
+  return () => { cancelled = true; clearTimeout(timerId); };
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────
+
 interface AudioProviderProps {
   children: ReactNode;
 }
 
-// Correct path — file is city-of-stars.mp3 (single extension)
-const AUDIO_SRC = '/audio/city-of-stars.mp3';
-
 export default function AudioProvider({ children }: AudioProviderProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef      = useRef<HTMLAudioElement | null>(null);
+  const cancelFadeRef = useRef<(() => void) | null>(null);
+  // Tracks user's intended volume so visibility duck can restore correctly
+  const userVolumeRef = useRef<number>(TARGET_VOLUME);
 
-  const [isPlaying,   setIsPlaying]   = useState(false);
-  const [isMuted,     setIsMuted]     = useState(false);
-  const [volume,      setVolumeState] = useState(0.6);
-  const [isLoaded,    setIsLoaded]    = useState(false);
-  const [hasError,    setHasError]    = useState(false);
+  const [isPlaying,  setIsPlaying]   = useState(false);
+  const [isMuted,    setIsMuted]     = useState(false);
+  const [volume,     setVolumeState] = useState(TARGET_VOLUME);
+  const [isLoaded,   setIsLoaded]    = useState(false);
+  const [hasError,   setHasError]    = useState(false);
 
-  // ── Create the HTMLAudioElement exactly once on mount ─────────────────
+  // ── Create audio element on mount ─────────────────────────────────────
   useEffect(() => {
-    console.log('[AudioProvider] Mounting. Audio source:', AUDIO_SRC);
-
-    const audio = new Audio(AUDIO_SRC);
+    const audio   = new Audio(AUDIO_SRC);
     audio.loop    = true;
-    audio.volume  = 0.6;
-    audio.preload = 'auto'; // 'auto' so the browser buffers immediately
+    audio.volume  = 0;       // always start silent; playFaded will raise it
+    audio.preload = 'auto';
 
-    const onCanPlay = () => {
-      console.log('[AudioProvider] Audio ready to play (canplaythrough)');
-      setIsLoaded(true);
-    };
-
-    const onError = () => {
-      const err = audio.error;
-      console.error(
-        '[AudioProvider] Failed to load audio.',
-        '\n  src :', AUDIO_SRC,
-        '\n  code:', err?.code,
-        '\n  msg :', err?.message,
-      );
-      setHasError(true);
-    };
-
+    const onCanPlayThrough = () => setIsLoaded(true);
+    const onError = () => { if (audio.error) setHasError(true); };
     const onEnded = () => setIsPlaying(false);
+    const onPause = () => { if (!audio.ended) setIsPlaying(false); };
+    const onPlay  = () => setIsPlaying(true);
 
-    // canplaythrough = enough buffered to play without stopping
-    audio.addEventListener('canplaythrough', onCanPlay);
+    audio.addEventListener('canplaythrough', onCanPlayThrough);
     audio.addEventListener('error',          onError);
     audio.addEventListener('ended',          onEnded);
+    audio.addEventListener('pause',          onPause);
+    audio.addEventListener('play',           onPlay);
 
     audioRef.current = audio;
 
     return () => {
-      audio.removeEventListener('canplaythrough', onCanPlay);
+      if (cancelFadeRef.current) cancelFadeRef.current();
+      audio.removeEventListener('canplaythrough', onCanPlayThrough);
       audio.removeEventListener('error',          onError);
       audio.removeEventListener('ended',          onEnded);
+      audio.removeEventListener('pause',          onPause);
+      audio.removeEventListener('play',           onPlay);
       audio.pause();
       audio.src = '';
       audioRef.current = null;
     };
   }, []);
 
-  // ── Keep audio element in sync with volume/mute state ────────────────
+  // ── Page visibility — duck/restore ────────────────────────────────────
+  useEffect(() => {
+    function handleVisibilityChange() {
+      const audio = audioRef.current;
+      if (!audio || audio.paused) return;
+      if (cancelFadeRef.current) cancelFadeRef.current();
+
+      cancelFadeRef.current = fadeVolume(
+        audio,
+        document.hidden
+          ? userVolumeRef.current * VIS_DUCK
+          : userVolumeRef.current,
+        document.hidden ? 600 : 800,
+        document.hidden ? 12  : 16,
+      );
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // ── Sync mute state ───────────────────────────────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = isMuted ? 0 : volume;
-  }, [volume, isMuted]);
+    audio.volume = isMuted ? 0 : userVolumeRef.current;
+  }, [isMuted]);
 
-  // ── requestPlay ───────────────────────────────────────────────────────
-  // Does NOT close over `isPlaying` state — reads the audio element's
-  // own .paused property instead, which is always current.
-  // This avoids the stale-closure bug where the callback captures an
-  // outdated value of isPlaying and silently skips the play() call.
-  const requestPlay = useCallback(async () => {
+  // ── playFaded — first-interaction entry point ─────────────────────────
+  // Starts at volume 0 and fades to targetVolume over fadeMs.
+  // This is the correct entry point for FirstInteraction.
+  const playFaded = useCallback(async (
+    targetVolume = TARGET_VOLUME,
+    fadeMs       = 2000,
+  ) => {
     const audio = audioRef.current;
+    if (!audio || !audio.paused) return;
 
-    if (!audio) {
-      console.warn('[AudioProvider] requestPlay called but audio element is null');
-      return;
-    }
-
-    // Use the element's own paused state — immune to stale closure
-    if (!audio.paused) {
-      console.log('[AudioProvider] requestPlay: already playing, skipping');
-      return;
-    }
-
-    console.log('[AudioProvider] requestPlay: calling audio.play()');
+    // Ensure we start at 0 for a clean fade-in
+    audio.volume        = 0;
+    userVolumeRef.current = targetVolume; // set user intent now
 
     try {
       await audio.play();
-      console.log('[AudioProvider] Playback started successfully');
       setIsPlaying(true);
-    } catch (err) {
-      // NotAllowedError = browser blocked because no user gesture preceded this
-      // NotSupportedError = codec/format issue
-      console.error('[AudioProvider] audio.play() rejected:', err);
-      setIsPlaying(false);
+      // Fade from 0 → targetVolume
+      if (cancelFadeRef.current) cancelFadeRef.current();
+      cancelFadeRef.current = fadeVolume(audio, targetVolume, fadeMs, 40);
+      // Sync React state at the end of the fade
+      setTimeout(() => setVolumeState(targetVolume), fadeMs);
+    } catch {
+      // Browser still blocked — leave paused, button works normally
     }
-  }, []); // no dependencies — reads from ref, never stale
+  }, []);
+
+  // ── requestPlay — button / envelope entry point ───────────────────────
+  const requestPlay = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio || !audio.paused) return;
+
+    // Restore to intended volume if element is at 0
+    if (audio.volume === 0 && !isMuted) {
+      audio.volume = userVolumeRef.current;
+    }
+
+    try {
+      await audio.play();
+      setIsPlaying(true);
+    } catch {
+      // Silently ignore
+    }
+  }, [isMuted]);
 
   // ── pause ─────────────────────────────────────────────────────────────
   const pause = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (cancelFadeRef.current) cancelFadeRef.current();
     audio.pause();
     setIsPlaying(false);
   }, []);
 
   // ── toggleMute ────────────────────────────────────────────────────────
-  const toggleMute = useCallback(() => {
-    setIsMuted((prev) => !prev);
-  }, []);
+  const toggleMute = useCallback(() => setIsMuted(p => !p), []);
 
-  // ── setVolume ─────────────────────────────────────────────────────────
+  // ── setVolume — used by MusicPlayer slider and PomTransition duck ──────
   const setVolume = useCallback((v: number) => {
-    setVolumeState(v);
-    if (v > 0) setIsMuted(false);
-  }, []);
+    const clamped = Math.min(1, Math.max(0, v));
+    userVolumeRef.current = clamped;
+    setVolumeState(clamped);
+    if (clamped > 0) setIsMuted(false);
 
-  const value: AudioContextValue = {
-    isPlaying,
-    isMuted,
-    volume,
-    isLoaded,
-    hasError,
-    requestPlay,
-    pause,
-    toggleMute,
-    setVolume,
-  };
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (cancelFadeRef.current) {
+      cancelFadeRef.current();
+      cancelFadeRef.current = null;
+    }
+    audio.volume = clamped;
+  }, []);
 
   return (
-    <AudioContext.Provider value={value}>
+    <AudioContext.Provider value={{
+      isPlaying, isMuted, volume, isLoaded, hasError,
+      playFaded, requestPlay, pause, toggleMute, setVolume,
+    }}>
       {children}
     </AudioContext.Provider>
   );
