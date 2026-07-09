@@ -3,23 +3,16 @@
 /**
  * Ending.tsx
  * The final section — the closing of the storybook.
- *
- * Layout intent:
- * - Feels like the last page of a book closing
- * - Gentle fade-out / credits area
- * - Closing message slot
- * - "Made with ♥" or similar quiet note
- * - No aggressive calls to action
- *
- * Content is intentionally EMPTY — ending text will be written later.
+ * Content intentionally empty — written in a later pass.
  */
 
-import { motion } from 'framer-motion';
-import FadeIn from '@/components/ui/FadeIn';
-import Container from '@/components/ui/Container';
-import Divider from '@/components/ui/Divider';
+import { motion, useReducedMotion } from 'framer-motion';
+import FadeIn     from '@/components/ui/FadeIn';
+import Container  from '@/components/ui/Container';
+import Divider    from '@/components/ui/Divider';
 
 export default function Ending() {
+  const shouldReduce = useReducedMotion();
   return (
     <section
       id="ending"
@@ -82,10 +75,10 @@ export default function Ending() {
         {/* ── Quiet footer note ───────────────────────────────────────── */}
         <motion.div
           className="mt-8 flex flex-col items-center gap-1"
-          initial={{ opacity: 0 }}
+          initial={{ opacity: shouldReduce ? 1 : 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
-          transition={{ delay: 0.8, duration: 1 }}
+          transition={shouldReduce ? { duration: 0 } : { delay: 0.8, duration: 1 }}
         >
           {/* Tiny star ornament */}
           <span

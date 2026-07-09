@@ -2,32 +2,35 @@
 
 /**
  * FloatingParticles.tsx
- * Renders softly drifting dust particles across the background.
- * Adds depth and atmosphere to the night sky without being distracting.
- * Uses Framer Motion for smooth, looping movement.
+ * Softly drifting luminous dust particles across the night sky.
+ * Adds atmosphere and depth without competing for attention.
+ *
+ * Respects prefers-reduced-motion: particles become static when
+ * the user has requested reduced motion, preserving the visual
+ * texture without any movement.
  */
 
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useMemo } from 'react';
 
 interface Particle {
-  id: number;
-  top: string;
-  left: string;
-  size: number;
+  id:       number;
+  top:      string;
+  left:     string;
+  size:     number;
   duration: number;
-  delay: number;
-  xRange: number;
-  yRange: number;
-  opacity: number;
+  delay:    number;
+  xRange:   number;
+  yRange:   number;
+  opacity:  number;
 }
 
 interface FloatingParticlesProps {
-  /** Number of particles (default: 25) */
+  /** Number of particles to render (default: 22) */
   count?: number;
 }
 
-/** Deterministic seeded RNG — same as AnimatedStars */
+/** Deterministic seeded LCG — stable across SSR and client renders */
 function createSeededRng(seed: number) {
   let s = seed;
   return () => {
@@ -36,25 +39,26 @@ function createSeededRng(seed: number) {
   };
 }
 
-export default function FloatingParticles({ count = 25 }: FloatingParticlesProps) {
+export default function FloatingParticles({ count = 22 }: FloatingParticlesProps) {
+  const shouldReduce = useReducedMotion();
+
   const particles: Particle[] = useMemo(() => {
-    const rng = createSeededRng(99); // different seed from stars
+    const rng = createSeededRng(99);
 
     return Array.from({ length: count }, (_, i) => ({
       id:       i,
       top:      `${(rng() * 100).toFixed(2)}%`,
       left:     `${(rng() * 100).toFixed(2)}%`,
-      size:     1 + rng() * 2,            // 1–3px
-      duration: 12 + rng() * 16,          // 12–28s loop
-      delay:    -(rng() * 20),            // negative delay = already mid-animation
-      xRange:   (rng() - 0.5) * 60,      // ±30px horizontal drift
-      yRange:   -(20 + rng() * 40),       // -20 to -60px upward drift
-      opacity:  0.06 + rng() * 0.12,      // very subtle: 0.06–0.18
+      size:     1 + rng() * 2,           // 1–3 px
+      duration: 14 + rng() * 14,         // 14–28s loop
+      delay:    -(rng() * 20),           // pre-offset so they're mid-drift on load
+      xRange:   (rng() - 0.5) * 50,     // ±25px horizontal
+      yRange:   -(18 + rng() * 38),      // −18 to −56px upward
+      opacity:  0.05 + rng() * 0.10,    // very subtle: 0.05–0.15
     }));
   }, [count]);
 
   return (
-    // aria-hidden: purely decorative
     <div
       aria-hidden="true"
       className="absolute inset-0 overflow-hidden pointer-events-none"
@@ -64,19 +68,22 @@ export default function FloatingParticles({ count = 25 }: FloatingParticlesProps
           key={p.id}
           className="absolute rounded-full"
           style={{
-            top:    p.top,
-            left:   p.left,
-            width:  `${p.size}px`,
-            height: `${p.size}px`,
-            // Soft blue-white dust
+            top:        p.top,
+            left:       p.left,
+            width:      `${p.size}px`,
+            height:     `${p.size}px`,
             background: 'radial-gradient(circle, rgba(137,207,240,0.9) 0%, transparent 70%)',
+            // When reduced motion: show at resting opacity, no movement
+            opacity:    shouldReduce ? p.opacity : undefined,
+            willChange: shouldReduce ? undefined : 'transform, opacity',
           }}
-          animate={{
+          // Suppress all animation when reduced motion is requested
+          animate={shouldReduce ? {} : {
             x:       [0, p.xRange, 0],
             y:       [0, p.yRange, 0],
             opacity: [0, p.opacity, 0],
           }}
-          transition={{
+          transition={shouldReduce ? undefined : {
             duration: p.duration,
             delay:    p.delay,
             repeat:   Infinity,
