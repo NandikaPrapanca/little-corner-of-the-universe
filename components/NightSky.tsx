@@ -16,9 +16,306 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import AnimatedStars    from '@/components/ui/AnimatedStars';
 import FloatingParticles from '@/components/ui/FloatingParticles';
 import ShootingStar     from '@/components/ui/ShootingStar';
+
+// ─── Watercolor Moon ──────────────────────────────────────────────────────
+/**
+ * A painterly, Studio Ghibli-inspired moon built entirely from SVG
+ * gradients and shapes. No external assets required.
+ *
+ * Layers (back to front):
+ *   1. Wide atmospheric corona — very faint, multi-stop radial
+ *   2. Mid glow ring — slightly denser warm ivory
+ *   3. Moon disc body — layered radials giving off-centre warmth
+ *   4. Soft limb darkening — ellipse covering the right/bottom edge
+ *   5. Watercolor texture patches — irregular ellipses simulating
+ *      paint bleed and subtle crater wash
+ *   6. Crescent shadow wash — soft translucent overlay on one side
+ *   7. Highlight bloom — tiny bright spot top-left, gives the sense
+ *      of light source without a hard specular
+ *
+ * Animations:
+ *   - Breathing glow: opacity keyframes on the corona, 10s loop
+ *   - Gentle rotation: 1.5° over 75s, barely perceptible
+ *   Both respect prefers-reduced-motion.
+ *
+ * Position: top 5%, right 8% — same as the previous moon.
+ * Size:     SVG viewBox 140×140, rendered at 88px × 88px so the
+ *           wide corona doesn't get clipped. The visible disc is ~64px.
+ */
+function WatercolorMoon() {
+  const shouldReduce = useReducedMotion() ?? false;
+
+  // The SVG canvas is 140×140; the disc centre is at 70,70 with r≈32
+  // giving plenty of bleed room for the corona layers.
+  const cx = 70;
+  const cy = 70;
+  const r  = 32;
+
+  return (
+    <motion.div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top:      'calc(5% - 12px)',   // compensate for the corona bleed
+        right:    'calc(8% - 12px)',
+        width:    '88px',
+        height:   '88px',
+        // Breathing glow on the container — scales the entire element
+        // very gently so the outer corona pulses
+      }}
+      animate={shouldReduce ? undefined : {
+        opacity: [0.82, 1, 0.82],
+      }}
+      transition={shouldReduce ? undefined : {
+        duration:   10,
+        ease:       'easeInOut',
+        repeat:     Infinity,
+        repeatType: 'mirror',
+      }}
+    >
+      {/* Slow rotation wrapper — 1.5° over 75 seconds */}
+      <motion.div
+        style={{ width: '100%', height: '100%' }}
+        animate={shouldReduce ? undefined : { rotate: [0, 1.5, 0, -1.5, 0] }}
+        transition={shouldReduce ? undefined : {
+          duration:   75,
+          ease:       'easeInOut',
+          repeat:     Infinity,
+          repeatType: 'loop',
+        }}
+      >
+        <svg
+          width="88"
+          height="88"
+          viewBox="0 0 140 140"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ display: 'block', overflow: 'visible' }}
+        >
+          <defs>
+            {/* ── Corona gradient — outermost atmospheric glow ──── */}
+            <radialGradient id="moonCorona" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"   stopColor="#FFF8E7" stopOpacity="0.00" />
+              <stop offset="38%"  stopColor="#FFF8E7" stopOpacity="0.00" />
+              <stop offset="52%"  stopColor="#FFF8E7" stopOpacity="0.06" />
+              <stop offset="65%"  stopColor="#FDEFC8" stopOpacity="0.10" />
+              <stop offset="78%"  stopColor="#F5E4B0" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="#E8D49A" stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Mid-glow ring ─────────────────────────────────── */}
+            <radialGradient id="moonMidGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"   stopColor="#FFF8E7" stopOpacity="0.00" />
+              <stop offset="45%"  stopColor="#FFF8E7" stopOpacity="0.00" />
+              <stop offset="56%"  stopColor="#FFFBEF" stopOpacity="0.14" />
+              <stop offset="68%"  stopColor="#FFF3D0" stopOpacity="0.12" />
+              <stop offset="82%"  stopColor="#F0E2A8" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="#E8D490" stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Moon body — off-centre warm light ─────────────── */}
+            <radialGradient id="moonBody" cx="38%" cy="35%" r="62%">
+              <stop offset="0%"   stopColor="#FFFCF0" stopOpacity="1"    />
+              <stop offset="28%"  stopColor="#FFF8E3" stopOpacity="1"    />
+              <stop offset="55%"  stopColor="#F8EDD0" stopOpacity="1"    />
+              <stop offset="78%"  stopColor="#EDD9B2" stopOpacity="1"    />
+              <stop offset="100%" stopColor="#D9C494" stopOpacity="1"    />
+            </radialGradient>
+
+            {/* ── Limb darkening — right-side dim ───────────────── */}
+            <radialGradient id="moonLimb" cx="72%" cy="62%" r="55%">
+              <stop offset="0%"   stopColor="#8C7A52" stopOpacity="0.18" />
+              <stop offset="45%"  stopColor="#8C7A52" stopOpacity="0.10" />
+              <stop offset="100%" stopColor="#8C7A52" stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Watercolor wash 1 — top-left paint bleed ─────── */}
+            <radialGradient id="moonWash1" cx="28%" cy="28%" r="45%">
+              <stop offset="0%"   stopColor="#FFFEF8" stopOpacity="0.22" />
+              <stop offset="60%"  stopColor="#FFF8E7" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#FFF8E7" stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Watercolor wash 2 — lower-right crater tint ──── */}
+            <radialGradient id="moonWash2" cx="65%" cy="68%" r="38%">
+              <stop offset="0%"   stopColor="#C8B882" stopOpacity="0.16" />
+              <stop offset="55%"  stopColor="#C8B882" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="#C8B882" stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Watercolor wash 3 — mid left subtle patch ────── */}
+            <radialGradient id="moonWash3" cx="38%" cy="58%" r="30%">
+              <stop offset="0%"   stopColor="#B8A870" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="#B8A870" stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Highlight bloom — primary light source ────────── */}
+            <radialGradient id="moonHighlight" cx="30%" cy="26%" r="28%">
+              <stop offset="0%"   stopColor="#FFFFFF"  stopOpacity="0.38" />
+              <stop offset="40%"  stopColor="#FFFEF4"  stopOpacity="0.14" />
+              <stop offset="100%" stopColor="#FFFEF4"  stopOpacity="0.00" />
+            </radialGradient>
+
+            {/* ── Soft clip for the disc ────────────────────────── */}
+            <clipPath id="moonClip">
+              {/*
+                Slightly irregular ellipse — not a perfect circle.
+                rx/ry differ by 1px to give that imperfect painted feel.
+              */}
+              <ellipse cx={cx} cy={cy} rx={r + 0.8} ry={r - 0.5} />
+            </clipPath>
+          </defs>
+
+          {/* Layer 1 — Wide corona (full canvas) */}
+          <ellipse
+            cx={cx} cy={cy}
+            rx="68" ry="67"
+            fill="url(#moonCorona)"
+          />
+
+          {/* Layer 2 — Mid glow ring */}
+          <ellipse
+            cx={cx} cy={cy}
+            rx="54" ry="53"
+            fill="url(#moonMidGlow)"
+          />
+
+          {/* Layers 3–8 all clipped to the disc shape */}
+          <g clipPath="url(#moonClip)">
+
+            {/* Layer 3 — Moon body */}
+            <ellipse
+              cx={cx} cy={cy}
+              rx={r + 0.8} ry={r - 0.5}
+              fill="url(#moonBody)"
+            />
+
+            {/* Layer 4 — Limb darkening */}
+            <ellipse
+              cx={cx} cy={cy}
+              rx={r + 0.8} ry={r - 0.5}
+              fill="url(#moonLimb)"
+            />
+
+            {/* Layer 5a — Watercolor wash: top-left bloom */}
+            <ellipse
+              cx="56" cy="54"
+              rx="22" ry="20"
+              fill="url(#moonWash1)"
+              transform="rotate(-12 56 54)"
+            />
+
+            {/* Layer 5b — Watercolor wash: lower-right crater tint */}
+            <ellipse
+              cx="78" cy="80"
+              rx="16" ry="14"
+              fill="url(#moonWash2)"
+              transform="rotate(8 78 80)"
+            />
+
+            {/* Layer 5c — Mid-left subtle patch */}
+            <ellipse
+              cx="58" cy="72"
+              rx="13" ry="11"
+              fill="url(#moonWash3)"
+              transform="rotate(-5 58 72)"
+            />
+
+            {/*
+              Layer 5d — Tiny darker patch near centre-right
+              Mimics the faint "maria" (dark basalt plains) on real moons
+              but rendered as a watercolor bleed, not a crisp shape.
+            */}
+            <ellipse
+              cx="74" cy="65"
+              rx="9" ry="7"
+              fill="#B0985A"
+              opacity="0.07"
+              transform="rotate(15 74 65)"
+            />
+
+            {/*
+              Layer 5e — Faint upper-right edge shadow
+              Makes the disc feel three-dimensional without a hard edge.
+            */}
+            <ellipse
+              cx="84" cy="52"
+              rx="12" ry="10"
+              fill="#8A7248"
+              opacity="0.06"
+              transform="rotate(20 84 52)"
+            />
+
+            {/* Layer 6 — Crescent edge shadow (overall twilight side) */}
+            <ellipse
+              cx={cx + 14}
+              cy={cy + 8}
+              rx={r - 2}
+              ry={r - 4}
+              fill="#071827"
+              opacity="0.13"
+            />
+
+            {/* Layer 7 — Highlight bloom */}
+            <ellipse
+              cx={cx} cy={cy}
+              rx={r + 0.8} ry={r - 0.5}
+              fill="url(#moonHighlight)"
+            />
+
+            {/*
+              Layer 8 — Paper-grain texture simulation
+              A very faint repeating diamond pattern at near-zero opacity
+              breaks up the gradient smoothness just enough to read as
+              painted rather than digital.
+            */}
+            <rect
+              x={cx - r - 1}
+              y={cy - r - 1}
+              width={(r + 1) * 2}
+              height={(r + 1) * 2}
+              fill="none"
+              stroke="#D4C080"
+              strokeWidth="0.3"
+              strokeDasharray="1.5 4"
+              opacity="0.06"
+            />
+
+          </g>
+
+          {/*
+            Edge softening — a thin ring just outside the disc that
+            blends the hard clip boundary back into the sky.
+            Uses the disc shape stroked slightly larger than the clip.
+          */}
+          <ellipse
+            cx={cx} cy={cy}
+            rx={r + 2.5}
+            ry={r + 1.5}
+            fill="none"
+            stroke="#FFF8E7"
+            strokeWidth="3"
+            opacity="0.06"
+          />
+          <ellipse
+            cx={cx} cy={cy}
+            rx={r + 5}
+            ry={r + 4}
+            fill="none"
+            stroke="#FFF0C8"
+            strokeWidth="4"
+            opacity="0.04"
+          />
+
+        </svg>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 export default function NightSky() {
   const parallaxRef = useRef<HTMLDivElement>(null);
@@ -60,46 +357,8 @@ export default function NightSky() {
         }}
       />
 
-      {/* ── Moon — smaller and closer to corner ──────────────────────── */}
-      {/*
-        Original: 80px disc at top:6% right:12%
-        Refined:  64px disc at top:5% right:8%  (≈ −20% size)
-      */}
-      <div
-        className="absolute animate-moon-glow"
-        style={{
-          top:    '5%',
-          right:  '8%',
-          width:  '64px',
-          height: '64px',
-        }}
-      >
-        {/* Outer diffuse halo */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: 'radial-gradient(circle, rgba(255,248,231,0.10) 0%, transparent 70%)',
-            transform:  'scale(3.2)',
-          }}
-        />
-        {/* Moon disc */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: `
-              radial-gradient(circle at 33% 33%, #FFFDF5 0%, #FFF8E7 55%, #EDE0C0 100%)
-            `,
-            boxShadow: '0 0 22px 8px rgba(255,248,231,0.18)',
-          }}
-        />
-        {/* Crescent shadow */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: 'radial-gradient(circle at 62% 42%, rgba(7,24,39,0.22) 0%, transparent 52%)',
-          }}
-        />
-      </div>
+      {/* ── Moon — watercolor illustration style ─────────────────────── */}
+      <WatercolorMoon />
 
       {/* ── Stars — staggered reveal via AnimatedStars batches ────────── */}
       {/*
