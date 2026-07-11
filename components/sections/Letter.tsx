@@ -179,23 +179,42 @@ export default function Letter() {
             fontFamily: 'var(--font-cormorant)',
             fontSize:   'clamp(1rem, 2.6vw, 1.125rem)',
             fontWeight: 400,
-            color:      'rgba(38, 28, 18, 0.82)',
+            color:      '#3D5474',   // body text
             lineHeight: 1.9,
           }}
         >
-          {PARAGRAPHS.map((para, i) => (
-            <motion.p
-              key={i}
-              {...paraVariant(i)}
-              style={{
-                marginBottom: 'clamp(1.1rem, 2.5vw, 1.5rem)',
-                // Preserve intentional line-breaks within a paragraph
-                whiteSpace:   'pre-line',
-              }}
-            >
-              {para}
-            </motion.p>
-          ))}
+          {PARAGRAPHS.map((para, i) => {
+            // First paragraph "Hi, Candy." is the heading
+            const isHeading = i === 0;
+            // Multi-line paragraphs that start with certain italic phrases
+            const isItalicLead =
+              para.startsWith('And honestly') ||
+              para.startsWith('Speaking of') ||
+              para.startsWith('Thank you...') ||
+              para.startsWith('So...');
+
+            return (
+              <motion.p
+                key={i}
+                {...paraVariant(i)}
+                style={{
+                  marginBottom: 'clamp(1.1rem, 2.5vw, 1.5rem)',
+                  whiteSpace:   'pre-line',
+                  color:        isHeading
+                    ? '#233A56'      // heading
+                    : isItalicLead
+                      ? '#5B6F89'    // italic/quiet beats
+                      : '#3D5474',   // body
+                  fontWeight:   isHeading ? 600 : 400,
+                  fontSize:     isHeading
+                    ? 'clamp(1.1rem, 3vw, 1.3rem)'
+                    : undefined,
+                }}
+              >
+                {para}
+              </motion.p>
+            );
+          })}
 
           {/* ── Signature ───────────────────────────────────────── */}
           <motion.p
@@ -208,10 +227,10 @@ export default function Letter() {
             }}
             style={{
               marginTop:   'clamp(2rem, 5vw, 3rem)',
-              fontWeight:  500,
+              fontWeight:  600,
               fontStyle:   'italic',
               fontSize:    'clamp(1.0625rem, 2.8vw, 1.25rem)',
-              color:       'rgba(38, 28, 18, 0.85)',
+              color:       '#233A56',   // signature
               whiteSpace:  'pre-line',
             }}
           >
@@ -233,7 +252,7 @@ export default function Letter() {
               fontStyle:     'italic',
               fontWeight:    300,
               textAlign:     'center',
-              color:         'rgba(38, 28, 18, 0.7)',
+              color:         '#5B6F89',   // P.S.
               letterSpacing: '0.01em',
             }}
           >

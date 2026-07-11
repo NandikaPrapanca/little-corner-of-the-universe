@@ -482,13 +482,28 @@ export default function ChapterFour() {
 
           {/* ── Constellation canvas ──────────────────────────────── */}
           <FadeIn direction="none">
+            {/*
+              The outer div uses the padding-top aspect-ratio trick to
+              match the SVG viewBox exactly. Both the SVG and the
+              NodeButtons are absolutely positioned inside it, so the
+              button percentages are always pixel-perfect over the dots.
+              vbW × vbH ratio → paddingTop = (vbH / vbW) * 100%
+            */}
             <div
-              style={{ position: 'relative', width: '100%' }}
+              style={{
+                position:    'relative',
+                width:       '100%',
+                paddingTop:  `${(vbH / vbW) * 100}%`,
+              }}
               role="group"
               aria-label="Memory constellation — tap a star to read a memory"
             >
-              <ConstellationSVG nodes={nodes} viewBox={viewBox} openId={openId} />
+              {/* SVG fills the padded box exactly */}
+              <div style={{ position: 'absolute', inset: 0 }}>
+                <ConstellationSVG nodes={nodes} viewBox={viewBox} openId={openId} />
+              </div>
 
+              {/* Buttons are absolutely positioned in the same coordinate space */}
               {nodes.map(node => (
                 <NodeButton
                   key={node.id}

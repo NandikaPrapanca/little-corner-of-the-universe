@@ -23,9 +23,9 @@ import BobEasterEgg from '@/components/ui/BobEasterEgg';
 const THOUGHTS: string[] = [
   'You laugh before your own joke finishes.',
   'You somehow turned Coca-Cola into a personality trait.',
-  'You get excited over Hironos like it\'s Christmas.',
+  'You get excited over Blind Boxes like it\'s Christmas.',
   'You\'ll say "last story"\u2026\u00a0\u00a0\u00a0\nand then somehow tell five more.',
-  'You always get way too excited whenever dogs appear.',
+  'You always get excited whenever dogs appear.',
   'You somehow made sushi impossible to eat without thinking of you.',
   'You\'ve talked about Canada so many times that I can\'t help imagining how happy you\'ll be if you get there.',
   'You overthink far more than you deserve to.',
