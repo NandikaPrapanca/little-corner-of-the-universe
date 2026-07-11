@@ -49,12 +49,12 @@ const MEMORIES: Memory[] = [
   { id: 2,  title: 'La La Land',            text: 'City of Stars will probably remind me of this website for a long time.' },
   { id: 3,  title: 'Off Campus',            text: 'Somehow we managed to binge another thing together.' },
   { id: 4,  title: 'Genshin',               text: 'Logging in somehow became less about resin and more about hanging out.' },
-  { id: 5,  title: 'Roblox',                text: 'Funny that Roblox ended up becoming where all of this quietly started.' },
+  { id: 5,  title: 'Discord',               text: 'Funny that Discord ended up becoming where all of this quietly started.' },
   { id: 6,  title: 'Naruto & Hinata',       text: 'Matching those blind boxes was honestly adorable.' },
   { id: 7,  title: 'The Drunk Texts',       text: 'I told you not to drink.\nYou definitely didn\'t listen.\nBut your drunk texts were still ridiculously funny.' },
-  { id: 8,  title: 'Secret Piercing',       text: 'You secretly got your ears pierced. That was one of my favorite unexpected updates.' },
+  { id: 8,  title: 'Secret Piercing',       text: 'It was fun seeing ur updates about it.' },
   { id: 9,  title: 'Canada & China',        text: 'Thank you for letting me see little pieces of your adventures.' },
-  { id: 10, title: 'Desk Cleanup',          text: 'Somehow you made cleaning my setup feel entertaining.' },
+  { id: 10, title: 'Desk Cleanup',          text: 'The root of my ass sticker in whatsapp.' },
   { id: 11, title: 'The Late Nights',       text: 'There were nights when you felt sad.\nIf staying awake a little longer meant you didn\'t have to feel alone...\nI never really minded.' },
 ];
 

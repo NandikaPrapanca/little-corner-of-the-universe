@@ -258,7 +258,7 @@ export default function ChapterOne() {
             />
 
             <Beat
-              text="You followed me on Instagram. A little later, you were the one who sent me a message asking if I wanted to play Genshin."
+              text="You followed me on Instagram. A little later, you were the one who sent me a message asking to play Genshin."
             />
 
             <Beat
