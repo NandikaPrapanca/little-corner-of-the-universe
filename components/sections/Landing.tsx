@@ -164,40 +164,45 @@ export default function Landing() {
   const envelopeControls = useAnimation();
   const scrollTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Scroll lock — disabled until user opens the envelope ────────────
-  // Lock scroll on mount so the opening scene can't be skipped.
-  // Unlock the moment the envelope is clicked (hasInteracted → true).
+  // ── Scroll lock — enforced until user opens the envelope ────────────
+  // Three-layer defence:
+  //   1. overflow:hidden on body  (simple cases)
+  //   2. wheel + touchmove preventDefault  (mouse wheel, trackpad, touch)
+  //   3. keydown preventDefault  (keyboard arrows, space, page keys)
+  //   4. scroll event → window.scrollTo(0,0)  (catches anything that slips through)
+  // Everything is removed the instant hasInteracted becomes true.
   useEffect(() => {
-    // Lock
-    document.body.style.overflow = 'hidden';
+    if (hasInteracted) return; // don't re-lock after unlock
+
+    // Layer 1 — CSS
+    document.body.style.overflow    = 'hidden';
     document.body.style.touchAction = 'none';
 
-    // Block keyboard scroll keys
+    // Layer 2 — wheel / touchmove
+    const stopScroll = (e: Event) => { e.preventDefault(); };
+    window.addEventListener('wheel',      stopScroll, { passive: false });
+    window.addEventListener('touchmove',  stopScroll, { passive: false });
+
+    // Layer 3 — keyboard
     const blockKeys = (e: KeyboardEvent) => {
-      const blocked = [
-        'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Space', ' ',
-        'Home', 'End',
-      ];
-      if (blocked.includes(e.key)) {
-        e.preventDefault();
-      }
+      const blocked = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Space', ' ', 'Home', 'End'];
+      if (blocked.includes(e.key)) e.preventDefault();
     };
     window.addEventListener('keydown', blockKeys, { passive: false });
 
-    return () => {
-      // Always restore on unmount (safety net)
-      document.body.style.overflow = '';
-      document.body.style.touchAction = '';
-      window.removeEventListener('keydown', blockKeys);
-    };
-  }, []);
+    // Layer 4 — snap back if something still moves the scroll position
+    const snapBack = () => { window.scrollTo(0, 0); };
+    window.addEventListener('scroll', snapBack, { passive: true });
 
-  // Unlock as soon as the user has interacted
-  useEffect(() => {
-    if (!hasInteracted) return;
-    document.body.style.overflow = '';
-    document.body.style.touchAction = '';
-  }, [hasInteracted]);
+    return () => {
+      document.body.style.overflow    = '';
+      document.body.style.touchAction = '';
+      window.removeEventListener('wheel',     stopScroll);
+      window.removeEventListener('touchmove', stopScroll);
+      window.removeEventListener('keydown',   blockKeys);
+      window.removeEventListener('scroll',    snapBack);
+    };
+  }, [hasInteracted]); // re-runs once when hasInteracted flips to true → effect returns cleanup, restores everything
 
   // Cleanup scroll timer on unmount
   useEffect(() => {

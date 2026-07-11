@@ -244,7 +244,7 @@ export default function ChapterOne() {
             />
 
             <Beat
-              text="We were playing Roblox, and you ended up joining me and my little brother, Albani. At the time, it was simply another evening. Another game. Nothing about it felt extraordinary."
+              text="Albani and i was in a discord server voice call, and you ended up joining me. At the time, it was simply another evening. Another game. Nothing about it felt extraordinary."
             />
 
             {/* Breath pause — visual gap before the shift */}
