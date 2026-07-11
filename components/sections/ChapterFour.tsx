@@ -368,40 +368,59 @@ export default function ChapterFour() {
     setOpenId(isClosing ? null : id);
 
     if (isClosing) {
-      // Closing — clear any active highlight
       setHighlightedId(null);
       if (highlightTimer.current) clearTimeout(highlightTimer.current);
-      return;
     }
+    // Scroll + highlight are now handled by the useEffect below,
+    // which fires after React commits the new openId to the DOM.
+  }, [openId]);
 
-    // Opening a new memory ─────────────────────────────────────────────
-    // Clear previous highlight immediately
-    setHighlightedId(null);
+  // ── Scroll to panel every time a new constellation is opened ────────
+  // Fires after every openId change (including switching between stars).
+  // By the time this effect runs, React has committed the new state and
+  // AnimatePresence has registered the panel's ref-callback.
+  // A single RAF is enough — we just need to be past the React commit.
+  useEffect(() => {
+    if (openId === null) return;
+
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    setHighlightedId(null);
 
-    // The panel element won't exist yet (AnimatePresence hasn't mounted it).
-    // Defer the scroll + highlight until after React has committed the render.
-    // A two-step RAF gives Framer Motion time to start its entry animation
-    // before we call scrollIntoView, avoiding a layout-before-paint jank.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = panelRefs.current.get(id);
-        if (el) {
-          el.scrollIntoView({
-            behavior: shouldReduce ? 'auto' : 'smooth',
-            block:    'center',
-          });
-        }
-
-        // Trigger highlight — suppressed when reduced motion is on
+    const tryScroll = () => {
+      const el = panelRefs.current.get(openId);
+      if (el) {
+        el.scrollIntoView({
+          behavior: shouldReduce ? 'auto' : 'smooth',
+          block:    'center',
+        });
         if (!shouldReduce) {
-          setHighlightedId(id);
+          setHighlightedId(openId);
           highlightTimer.current = setTimeout(() => {
             setHighlightedId(null);
           }, 2000);
         }
-      });
-    });
+      } else {
+        // Panel not yet in the ref map — AnimatePresence may still be
+        // mounting it. Retry once more on the next frame.
+        requestAnimationFrame(() => {
+          const el2 = panelRefs.current.get(openId);
+          if (!el2) return;
+          el2.scrollIntoView({
+            behavior: shouldReduce ? 'auto' : 'smooth',
+            block:    'center',
+          });
+          if (!shouldReduce) {
+            setHighlightedId(openId);
+            highlightTimer.current = setTimeout(() => {
+              setHighlightedId(null);
+            }, 2000);
+          }
+        });
+      }
+    };
+
+    requestAnimationFrame(tryScroll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId, shouldReduce]);
 
   const handleClose = useCallback(() => {

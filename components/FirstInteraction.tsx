@@ -95,7 +95,7 @@ export default function FirstInteraction() {
               letterSpacing: '0.04em',
             }}
           >
-            Tap anywhere to begin.
+            Tap the envelope to begin.
           </span>
         </motion.div>
       )}
