@@ -346,20 +346,42 @@ export default function ChapterFour() {
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
 
   // ── Ref map: memory id → panel DOM element ─────────────────────────
-  // Stored in a ref (not state) so reads/writes never trigger re-renders.
   const panelRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // Mirror of openId in a ref so handlePanelRef can read the current
+  // value without capturing a stale closure.
+  const openIdRef = useRef<number | null>(null);
+  useEffect(() => { openIdRef.current = openId; }, [openId]);
+
+  // shouldReduce in a ref for the same reason
+  const shouldReduceRef = useRef(shouldReduce);
+  useEffect(() => { shouldReduceRef.current = shouldReduce; }, [shouldReduce]);
 
   // Auto-clear for the highlight timeout
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Ref-callback passed to MemoryPanel — called by React on mount/unmount
+  // Ref-callback — called by React when a panel mounts or unmounts.
+  // On MOUNT (el !== null): store the element, then scroll to it if it
+  // belongs to the currently open constellation.  This fires at exactly
+  // the right moment: after AnimatePresence has rendered the new panel
+  // but before the browser has painted, so scrollIntoView is reliable.
   const handlePanelRef = useCallback((id: number, el: HTMLDivElement | null) => {
     if (el) {
       panelRefs.current.set(id, el);
+
+      // Scroll only when this panel is the one the user just selected
+      if (id === openIdRef.current) {
+        requestAnimationFrame(() => {
+          el.scrollIntoView({
+            behavior: shouldReduceRef.current ? 'auto' : 'smooth',
+            block:    'center',
+          });
+        });
+      }
     } else {
       panelRefs.current.delete(id);
     }
-  }, []);
+  }, []); // no deps — reads everything through refs
 
   const handleNodeClick = useCallback((id: number) => {
     const isClosing = id === openId;
@@ -375,52 +397,21 @@ export default function ChapterFour() {
     // which fires after React commits the new openId to the DOM.
   }, [openId]);
 
-  // ── Scroll to panel every time a new constellation is opened ────────
-  // Fires after every openId change (including switching between stars).
-  // By the time this effect runs, React has committed the new state and
-  // AnimatePresence has registered the panel's ref-callback.
-  // A single RAF is enough — we just need to be past the React commit.
+  // ── Highlight every time a new constellation is opened ─────────────
+  // Scroll is now triggered in handlePanelRef the moment the panel mounts.
+  // This effect handles only the temporary violet-glow highlight.
   useEffect(() => {
     if (openId === null) return;
 
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     setHighlightedId(null);
 
-    const tryScroll = () => {
-      const el = panelRefs.current.get(openId);
-      if (el) {
-        el.scrollIntoView({
-          behavior: shouldReduce ? 'auto' : 'smooth',
-          block:    'center',
-        });
-        if (!shouldReduce) {
-          setHighlightedId(openId);
-          highlightTimer.current = setTimeout(() => {
-            setHighlightedId(null);
-          }, 2000);
-        }
-      } else {
-        // Panel not yet in the ref map — AnimatePresence may still be
-        // mounting it. Retry once more on the next frame.
-        requestAnimationFrame(() => {
-          const el2 = panelRefs.current.get(openId);
-          if (!el2) return;
-          el2.scrollIntoView({
-            behavior: shouldReduce ? 'auto' : 'smooth',
-            block:    'center',
-          });
-          if (!shouldReduce) {
-            setHighlightedId(openId);
-            highlightTimer.current = setTimeout(() => {
-              setHighlightedId(null);
-            }, 2000);
-          }
-        });
-      }
-    };
-
-    requestAnimationFrame(tryScroll);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!shouldReduce) {
+      setHighlightedId(openId);
+      highlightTimer.current = setTimeout(() => {
+        setHighlightedId(null);
+      }, 2000);
+    }
   }, [openId, shouldReduce]);
 
   const handleClose = useCallback(() => {
