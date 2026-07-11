@@ -35,15 +35,8 @@ export const metadata: Metadata = {
   title:       'A Little Corner of the Universe ✦',
   description: 'A personal, handcrafted birthday storybook.',
   robots:      { index: false, follow: false },
-  // Favicon — envelope SVG reusing the Landing artwork geometry
-  icons: {
-    icon: [
-      {
-        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 68'%3E%3Crect x='0.5' y='0.5' width='95' height='67' rx='4' fill='%23071827' stroke='%2389CFF0' stroke-width='2'/%3E%3Cpath d='M0 0 L96 0 L48 36 Z' fill='%230F2840' stroke='%2389CFF0' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M0 68 L48 34 L96 68' stroke='%2389CFF0' stroke-width='1' fill='none' opacity='0.5'/%3E%3Ccircle cx='48' cy='52' r='5' fill='%23B8A8E3' opacity='0.7'/%3E%3C/svg%3E",
-        type: 'image/svg+xml',
-      },
-    ],
-  },
+  // Icons are served automatically from app/icon.tsx and app/apple-icon.tsx
+  // by Next.js App Router — no explicit icons config needed here.
   openGraph: {
     title:       'little corner of the universe',
     description: 'A personal, handcrafted birthday storybook.',
