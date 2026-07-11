@@ -142,7 +142,9 @@ export default function PomTransition() {
   const [stage,     setStage]     = useState<PomStage>('hidden');
   const [walkFrame, setWalkFrame] = useState(0);
   // Hover state for the envelope hitbox
-  const [envHovered, setEnvHovered] = useState(false);
+  const [envHovered,    setEnvHovered]    = useState(false);
+  // Letter is hidden until Pom hands it over — prevents layout spoiler
+  const [letterUnlocked, setLetterUnlocked] = useState(false);
 
   const walkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sectionRef      = useRef<HTMLDivElement>(null);
@@ -200,32 +202,37 @@ export default function PomTransition() {
   // ── Envelope click ───────────────────────────────────────────────────
   // 1. Instant sprite swap to sit.png
   // 2. Brief 300ms pause — feels like Pom takes a breath
-  // 3. Gentle scroll to the Letter section
+  // 3. Unlock Letter, then RAF-scroll to it
   const handleEnvelopeClick = useCallback(async () => {
     if (stage !== 'sitting') return;
 
-    // Instant swap — no delay, no animation
+    // Instant sprite swap — Pom hands over the letter
     setStage('releasing');
     setEnvHovered(false);
 
-    // Subtle audio duck (unchanged)
+    // Subtle audio duck
     duckVolume(0.35, 800);
 
-    // Short pause before scroll
+    // Brief pause before reveal
     await new Promise<void>(res =>
       setTimeout(res, shouldReduce ? 0 : 300),
     );
 
     setStage('done');
 
-    // Scroll to letter
-    const letterEl = document.getElementById('letter');
-    if (letterEl) {
-      letterEl.scrollIntoView({
-        behavior: shouldReduce ? 'auto' : 'smooth',
-        block:    'start',
-      });
-    }
+    // Mount the Letter section, then scroll to it in the next frame
+    // (requestAnimationFrame ensures the DOM is painted before we scroll)
+    setLetterUnlocked(true);
+
+    requestAnimationFrame(() => {
+      const letterEl = document.getElementById('letter');
+      if (letterEl) {
+        letterEl.scrollIntoView({
+          behavior: shouldReduce ? 'auto' : 'smooth',
+          block:    'start',
+        });
+      }
+    });
 
     // Restore volume after scroll starts
     setTimeout(() => duckVolume(0.6, 1000), 600);
@@ -296,6 +303,28 @@ export default function PomTransition() {
                     initial={{ x: shouldReduce ? 0 : '-50vw', opacity: shouldReduce ? 1 : 0.85 }}
                     animate={pomControls}
                   >
+                    {/*
+                      Ambient glow — centered behind the full sprite.
+                      Lives on the outer wrapper so it stays centred
+                      during both walking and sitting. Never drifts.
+                    */}
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position:      'absolute',
+                        top:           '50%',
+                        left:          '50%',
+                        transform:     'translate(-50%, -50%)',
+                        width:         `${POM_W + 60}px`,
+                        height:        `${POM_H + 60}px`,
+                        borderRadius:  '50%',
+                        background:    'radial-gradient(circle, rgba(255,248,220,0.20) 0%, rgba(137,207,240,0.08) 50%, transparent 72%)',
+                        filter:        'blur(14px)',
+                        pointerEvents: 'none',
+                        zIndex:        1,
+                      }}
+                    />
+
                     {/* Walking bob / sitting breathe wrapper */}
                     <motion.div
                       style={{ transformOrigin: 'bottom center' }}
@@ -325,39 +354,13 @@ export default function PomTransition() {
                         }}
                       />
 
-                      {/* ── Envelope hitbox + glow ──────────────────
-                        Only visible/active in the 'sitting' stage.
+                      {/* ── Envelope hitbox ────────────────────────
+                        Only active in the 'sitting' stage.
                         Positioned over the envelope in sit-envelope.png.
                         The hitbox is the ONLY interactive element.
                       ─────────────────────────────────────────────── */}
                       {stage === 'sitting' && (
                         <>
-                          {/* Warm glow — behind the button, follows envelope position */}
-                          <motion.div
-                            aria-hidden="true"
-                            style={{
-                              position:      'absolute',
-                              bottom:        '2px',
-                              left:          '50%',
-                              transform:     'translateX(-50%)',
-                              width:         `${ENV_BOX_W + 20}px`,
-                              height:        `${ENV_BOX_H + 20}px`,
-                              borderRadius:  '50%',
-                              background:    'radial-gradient(circle, rgba(255,220,140,0.28) 0%, rgba(137,207,240,0.12) 55%, transparent 75%)',
-                              pointerEvents: 'none',
-                              zIndex:        3,
-                            }}
-                            animate={shouldReduce ? {} : envHovered
-                              ? { opacity: [0.7, 1, 0.7], scale: [1.0, 1.08, 1.0] }
-                              : { opacity: [0.4, 0.75, 0.4], scale: [0.95, 1.05, 0.95] }
-                            }
-                            transition={{
-                              duration:   envHovered ? 1.2 : 3.5,
-                              repeat:     Infinity,
-                              ease:       'easeInOut',
-                            }}
-                          />
-
                           {/* Transparent button — hitbox only, no visible element */}
                           <button
                             onClick={handleEnvelopeClick}
@@ -458,9 +461,9 @@ export default function PomTransition() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════
-          LETTER — always in the DOM; user scrolls to it naturally
+          LETTER — only mounts after Pom hands over the envelope
       ══════════════════════════════════════════════════════════════ */}
-      <Letter />
+      {letterUnlocked && <Letter />}
     </>
   );
 }

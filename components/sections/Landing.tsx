@@ -164,7 +164,42 @@ export default function Landing() {
   const envelopeControls = useAnimation();
   const scrollTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup on unmount
+  // ── Scroll lock — disabled until user opens the envelope ────────────
+  // Lock scroll on mount so the opening scene can't be skipped.
+  // Unlock the moment the envelope is clicked (hasInteracted → true).
+  useEffect(() => {
+    // Lock
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    // Block keyboard scroll keys
+    const blockKeys = (e: KeyboardEvent) => {
+      const blocked = [
+        'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Space', ' ',
+        'Home', 'End',
+      ];
+      if (blocked.includes(e.key)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', blockKeys, { passive: false });
+
+    return () => {
+      // Always restore on unmount (safety net)
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+      window.removeEventListener('keydown', blockKeys);
+    };
+  }, []);
+
+  // Unlock as soon as the user has interacted
+  useEffect(() => {
+    if (!hasInteracted) return;
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+  }, [hasInteracted]);
+
+  // Cleanup scroll timer on unmount
   useEffect(() => {
     return () => {
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
