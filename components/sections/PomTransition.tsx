@@ -7,20 +7,25 @@
  * Stage machine (unchanged):
  *   hidden → walking → sitting → releasing → opening → done
  *
+ * New interaction flow:
+ *   1. Pom walks in (unchanged).
+ *   2. Pom arrives holding the envelope → sit-envelope.png, breathing idle.
+ *   3. The envelope area glows softly. Only the envelope is clickable.
+ *   4. Clicking the envelope:
+ *        a. Instantly swaps to sit.png (Pom hands over the letter).
+ *        b. Waits ~300ms.
+ *        c. Smoothly scrolls to #letter.
+ *   5. Letter section is already in the DOM; scroll reveals it naturally.
+ *
  * Sprite mapping:
- *   walking               → walk-1..5.png  (5-frame loop, ~9.5 FPS)
- *   sitting               → sit.png        (breathing animation)
- *   releasing             → sit-envelope.png
- *   opening | done        → envelope-open.png
+ *   walking                        → walk-1..5.png  (~9.5 FPS)
+ *   sitting (idle, holding)        → sit-envelope.png
+ *   releasing | opening | done     → sit.png   (handed off)
  *
- * Walking extras:
- *   - Tiny vertical bob: translateY 0 → -2 → 0 → 2 → 0, ~0.45s per cycle
- *
- * Sitting extras:
- *   - Breathing: scaleY 1 → 1.015 → 1, 2.5s loop, transformOrigin bottom
- *
- * All SVG placeholder graphics have been removed.
- * No tail overlay SVG, no blink overlay — the PNG sprites handle everything.
+ * No floating envelope overlay.
+ * No dark screen overlay.
+ * No old invisible full-Pom click target.
+ * The only interactive element is the envelope hitbox on the sprite.
  */
 
 import {
@@ -54,18 +59,17 @@ const WALK_FRAMES = [
 
 const SIT           = '/characters/pom/sit.png';
 const SIT_ENVELOPE  = '/characters/pom/sit-envelope.png';
-const ENVELOPE_OPEN = '/characters/pom/envelope-open.png';
+// envelope-open.png kept in preload list for future use but not rendered in this flow
 
 const ALL_ASSETS: readonly string[] = [
   ...WALK_FRAMES,
   SIT,
   SIT_ENVELOPE,
-  ENVELOPE_OPEN,
+  '/characters/pom/envelope-open.png',
 ];
 
-// ~9.5 FPS
-const WALK_FRAME_MS    = 105;
-const WALK_FRAME_COUNT = WALK_FRAMES.length; // 5
+const WALK_FRAME_MS    = 105; // ~9.5 FPS
+const WALK_FRAME_COUNT = WALK_FRAMES.length;
 
 // ─── Sprite size ──────────────────────────────────────────────────────────
 
@@ -73,31 +77,26 @@ const POM_W = 160;
 const POM_H = 160;
 
 // ─── Asset preloader ──────────────────────────────────────────────────────
-// Returns true once all walk frames have resolved (loaded or errored).
-// Non-blocking — never delays rendering.
 
 function useSpritePreloader(): boolean {
   const [walkReady, setWalkReady] = useState(false);
 
   useEffect(() => {
-    let resolvedWalk = 0;
+    let resolved = 0;
 
     ALL_ASSETS.forEach((src) => {
       const img = new window.Image();
-
       const done = () => {
         if ((WALK_FRAMES as readonly string[]).includes(src)) {
-          resolvedWalk++;
-          if (resolvedWalk === WALK_FRAME_COUNT) setWalkReady(true);
+          resolved++;
+          if (resolved === WALK_FRAME_COUNT) setWalkReady(true);
         }
       };
-
       img.onload  = done;
       img.onerror = () => {
         console.warn(`[PomTransition] Sprite failed to load: ${src}`);
         done();
       };
-
       img.src = src;
     });
   }, []);
@@ -116,7 +115,6 @@ type PomStage =
   | 'done';
 
 // ─── Sprite source selection ──────────────────────────────────────────────
-// Pure function — no side-effects.
 
 function getSrc(stage: PomStage, walkFrame: number): string {
   switch (stage) {
@@ -124,69 +122,14 @@ function getSrc(stage: PomStage, walkFrame: number): string {
     case 'walking':
       return WALK_FRAMES[walkFrame];
     case 'sitting':
-      return SIT;
-    case 'releasing':
+      // Pom is idle, holding the envelope in mouth
       return SIT_ENVELOPE;
+    case 'releasing':
     case 'opening':
     case 'done':
-      return ENVELOPE_OPEN;
+      // Pom has handed off the envelope — peaceful sit
+      return SIT;
   }
-}
-
-// ─── Envelope SVG ─────────────────────────────────────────────────────────
-// The SVG envelope that floats above Pom during the sitting/releasing stages.
-// Still used because the real envelope asset for the floating overlay is SVG.
-// envelope-open.png is shown as the Pom sprite in the opening stage,
-// but the floating animated envelope element remains SVG.
-
-interface EnvelopeSVGProps {
-  isOpen:       boolean;
-  shouldReduce: boolean;
-  style?:       CSSProperties;
-}
-
-function EnvelopeSVG({ isOpen, shouldReduce, style }: EnvelopeSVGProps) {
-  const W = 72;
-  const H = 50;
-
-  return (
-    <svg
-      width={W}
-      height={H}
-      viewBox={`0 0 ${W} ${H}`}
-      fill="none"
-      aria-hidden="true"
-      style={{ display: 'block', overflow: 'visible', ...style }}
-    >
-      <rect x=".5" y=".5" width={W - 1} height={H - 1} rx="3"
-        fill="rgba(16,37,61,0.75)"
-        stroke="rgba(137,207,240,0.4)"
-        strokeWidth="1"
-      />
-      <line x1="0" y1={H} x2={W / 2} y2={H * 0.54}
-        stroke="rgba(137,207,240,0.12)" strokeWidth=".75" />
-      <line x1={W} y1={H} x2={W / 2} y2={H * 0.54}
-        stroke="rgba(137,207,240,0.12)" strokeWidth=".75" />
-      <motion.path
-        d={`M 0 0 L ${W} 0 L ${W / 2} ${H * 0.46} Z`}
-        fill="rgba(16,37,61,0.9)"
-        stroke="rgba(137,207,240,0.4)"
-        strokeWidth="1"
-        strokeLinejoin="round"
-        style={{ transformOrigin: `${W / 2}px 0px` }}
-        animate={shouldReduce ? {} : isOpen
-          ? { rotateX: 180, opacity: 0.25 }
-          : { rotateX: 0,   opacity: 1   }
-        }
-        transition={{ duration: 0.7, ease: [0.4, 0, 0.2, 1] }}
-      />
-      <circle cx={W / 2} cy={H * 0.7} r="4"
-        fill="rgba(184,168,227,0.3)"
-        stroke="rgba(184,168,227,0.55)"
-        strokeWidth=".75"
-      />
-    </svg>
-  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -196,16 +139,16 @@ export default function PomTransition() {
   const audio        = useContext(AudioContext);
   const walkReady    = useSpritePreloader();
 
-  const [stage,      setStage]      = useState<PomStage>('hidden');
-  const [walkFrame,  setWalkFrame]  = useState(0);
-  const [showLetter, setShowLetter] = useState(false);
+  const [stage,     setStage]     = useState<PomStage>('hidden');
+  const [walkFrame, setWalkFrame] = useState(0);
+  // Hover state for the envelope hitbox
+  const [envHovered, setEnvHovered] = useState(false);
 
   const walkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sectionRef      = useRef<HTMLDivElement>(null);
   const pomControls     = useAnimation();
-  const envControls     = useAnimation();
 
-  // ── Volume duck helper ──────────────────────────────────────────────
+  // ── Volume duck helper (audio untouched per spec) ───────────────────
   const duckVolume = useCallback((targetVolume: number, durationMs: number) => {
     if (!audio) return;
     const start  = audio.volume;
@@ -220,7 +163,7 @@ export default function PomTransition() {
     }, stepMs);
   }, [audio]);
 
-  // ── Trigger walk when section enters viewport ───────────────────────
+  // ── Walk trigger ────────────────────────────────────────────────────
   useEffect(() => {
     if (!sectionRef.current) return;
     const observer = new IntersectionObserver(
@@ -254,41 +197,52 @@ export default function PomTransition() {
     };
   }, [stage, pomControls, shouldReduce]);
 
-  // ── Envelope click ──────────────────────────────────────────────────
+  // ── Envelope click ───────────────────────────────────────────────────
+  // 1. Instant sprite swap to sit.png
+  // 2. Brief 300ms pause — feels like Pom takes a breath
+  // 3. Gentle scroll to the Letter section
   const handleEnvelopeClick = useCallback(async () => {
     if (stage !== 'sitting') return;
 
+    // Instant swap — no delay, no animation
     setStage('releasing');
-    duckVolume(0.3, 1200);
+    setEnvHovered(false);
 
-    await pomControls.start({
-      x:     shouldReduce ? 0 : -12,
-      scale: shouldReduce ? 1 : 0.95,
-      transition: { duration: 0.5, ease: 'easeOut' },
-    });
+    // Subtle audio duck (unchanged)
+    duckVolume(0.35, 800);
 
-    setStage('opening');
+    // Short pause before scroll
+    await new Promise<void>(res =>
+      setTimeout(res, shouldReduce ? 0 : 300),
+    );
 
-    await envControls.start({
-      y:     shouldReduce ? 0 : -60,
-      scale: shouldReduce ? 1 : 2.2,
-      transition: { duration: 0.9, ease: [0.25, 0.1, 0.25, 1] },
-    });
-
-    await new Promise<void>(res => setTimeout(res, shouldReduce ? 0 : 700));
-
-    setShowLetter(true);
     setStage('done');
-    duckVolume(0.6, 1500);
-  }, [stage, pomControls, envControls, duckVolume, shouldReduce]);
 
-  // ── Derived values ───────────────────────────────────────────────────
+    // Scroll to letter
+    const letterEl = document.getElementById('letter');
+    if (letterEl) {
+      letterEl.scrollIntoView({
+        behavior: shouldReduce ? 'auto' : 'smooth',
+        block:    'start',
+      });
+    }
 
-  const isSitting    = stage === 'sitting' || stage === 'releasing' || stage === 'opening' || stage === 'done';
-  const envelopeOpen = stage === 'opening' || stage === 'done';
-  const isDone       = stage === 'done';
-  const isWalking    = stage === 'walking';
-  const currentSrc   = getSrc(stage, walkFrame);
+    // Restore volume after scroll starts
+    setTimeout(() => duckVolume(0.6, 1000), 600);
+  }, [stage, duckVolume, shouldReduce]);
+
+  // ── Derived ──────────────────────────────────────────────────────────
+
+  const isSitting = stage === 'sitting' || stage === 'releasing' || stage === 'opening' || stage === 'done';
+  const isWalking = stage === 'walking';
+  const currentSrc = getSrc(stage, walkFrame);
+
+  // Envelope hitbox:
+  // Positioned over the lower-centre of the sprite where the envelope lives.
+  // Approximation: ~55% of sprite width, ~25% of sprite height,
+  // anchored to the bottom-centre.
+  const ENV_BOX_W = Math.round(POM_W * 0.55); // ~88px
+  const ENV_BOX_H = Math.round(POM_H * 0.28); // ~45px
 
   return (
     <>
@@ -318,12 +272,12 @@ export default function PomTransition() {
               aria-live="polite"
               aria-label={
                 isSitting
-                  ? 'A small Pomeranian sits patiently'
+                  ? 'A small Pomeranian sits holding a glowing envelope — click the envelope to open it'
                   : 'A small Pomeranian is walking toward you'
               }
               style={{
                 position:       'relative',
-                height:         `${POM_H + 40}px`,
+                height:         `${POM_H + 24}px`,
                 display:        'flex',
                 alignItems:     'flex-end',
                 justifyContent: 'center',
@@ -342,34 +296,18 @@ export default function PomTransition() {
                     initial={{ x: shouldReduce ? 0 : '-50vw', opacity: shouldReduce ? 1 : 0.85 }}
                     animate={pomControls}
                   >
-                    {/*
-                      Walking bob: tiny vertical oscillation while frames cycle.
-                      Only active during 'walking'; silenced otherwise.
-                      scaleY breathing: only active during 'sitting'.
-                    */}
+                    {/* Walking bob / sitting breathe wrapper */}
                     <motion.div
                       style={{ transformOrigin: 'bottom center' }}
                       animate={shouldReduce ? {} : isWalking
-                        // Subtle bob — 0 → -2 → 0 → 2 → 0 px, ~0.45s per cycle
                         ? { y: [0, -2, 0, 2, 0] }
-                        // Breathing when sitting — scaleY 1 → 1.015 → 1
-                        : stage === 'sitting'
+                        : isSitting
                           ? { scaleY: [1, 1.015, 1] }
                           : {}
                       }
                       transition={shouldReduce ? {} : isWalking
-                        ? {
-                            duration:   0.45,
-                            repeat:     Infinity,
-                            ease:       'easeInOut',
-                            repeatType: 'loop',
-                          }
-                        : {
-                            duration:   2.5,
-                            repeat:     Infinity,
-                            ease:       'easeInOut',
-                            repeatType: 'mirror',
-                          }
+                        ? { duration: 0.45, repeat: Infinity, ease: 'easeInOut', repeatType: 'loop' }
+                        : { duration: 2.5, repeat: Infinity, ease: 'easeInOut', repeatType: 'mirror' }
                       }
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -384,92 +322,98 @@ export default function PomTransition() {
                           height:         `${POM_H}px`,
                           objectFit:      'contain',
                           imageRendering: 'auto',
-                          // No extra CSS transforms — Framer Motion handles all movement
                         }}
                       />
+
+                      {/* ── Envelope hitbox + glow ──────────────────
+                        Only visible/active in the 'sitting' stage.
+                        Positioned over the envelope in sit-envelope.png.
+                        The hitbox is the ONLY interactive element.
+                      ─────────────────────────────────────────────── */}
+                      {stage === 'sitting' && (
+                        <>
+                          {/* Warm glow — behind the button, follows envelope position */}
+                          <motion.div
+                            aria-hidden="true"
+                            style={{
+                              position:      'absolute',
+                              bottom:        '2px',
+                              left:          '50%',
+                              transform:     'translateX(-50%)',
+                              width:         `${ENV_BOX_W + 20}px`,
+                              height:        `${ENV_BOX_H + 20}px`,
+                              borderRadius:  '50%',
+                              background:    'radial-gradient(circle, rgba(255,220,140,0.28) 0%, rgba(137,207,240,0.12) 55%, transparent 75%)',
+                              pointerEvents: 'none',
+                              zIndex:        3,
+                            }}
+                            animate={shouldReduce ? {} : envHovered
+                              ? { opacity: [0.7, 1, 0.7], scale: [1.0, 1.08, 1.0] }
+                              : { opacity: [0.4, 0.75, 0.4], scale: [0.95, 1.05, 0.95] }
+                            }
+                            transition={{
+                              duration:   envHovered ? 1.2 : 3.5,
+                              repeat:     Infinity,
+                              ease:       'easeInOut',
+                            }}
+                          />
+
+                          {/* Transparent button — hitbox only, no visible element */}
+                          <button
+                            onClick={handleEnvelopeClick}
+                            aria-label="Take the letter from Pom"
+                            onMouseEnter={() => setEnvHovered(true)}
+                            onMouseLeave={() => setEnvHovered(false)}
+                            style={{
+                              position:        'absolute',
+                              bottom:          '2px',
+                              left:            '50%',
+                              transform:       `translateX(-50%) scale(${envHovered && !shouldReduce ? 1.04 : 1})`,
+                              transition:      'transform 0.2s ease',
+                              width:           `${ENV_BOX_W}px`,
+                              height:          `${ENV_BOX_H}px`,
+                              background:      'transparent',
+                              border:          'none',
+                              cursor:          'pointer',
+                              zIndex:          4,
+                              // Minimum touch target
+                              minWidth:        '44px',
+                              minHeight:       '44px',
+                            } as CSSProperties}
+                          />
+                        </>
+                      )}
                     </motion.div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* ── Envelope overlay (floating, sits above Pom) ──────── */}
+              {/* ── "open" hint — appears after 1.5s idle ───────────── */}
               <AnimatePresence>
-                {isSitting && !isDone && (
-                  <motion.div
-                    key="envelope"
-                    initial={{ opacity: 0, y: 0, scale: 1 }}
-                    animate={envControls}
+                {stage === 'sitting' && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, transition: { duration: 0.3 } }}
+                    transition={{ delay: shouldReduce ? 0 : 1.5, duration: 0.8 }}
                     style={{
-                      position: 'absolute',
-                      bottom:   `${POM_H - 20}px`,
-                      zIndex:   3,
-                      cursor:   stage === 'sitting' ? 'pointer' : 'default',
+                      position:      'absolute',
+                      bottom:        '-22px',
+                      left:          '50%',
+                      transform:     'translateX(-50%)',
+                      fontFamily:    'var(--font-inter)',
+                      fontSize:      '0.625rem',
+                      fontWeight:    300,
+                      letterSpacing: '0.22em',
+                      textTransform: 'uppercase',
+                      color:         'rgba(137,207,240,0.42)',
+                      whiteSpace:    'nowrap',
+                      pointerEvents: 'none',
+                      zIndex:        1,
                     }}
                   >
-                    {/* Glow behind envelope */}
-                    <motion.div
-                      aria-hidden="true"
-                      style={{
-                        position:      'absolute',
-                        inset:         '-16px',
-                        borderRadius:  '50%',
-                        background:    'radial-gradient(circle, rgba(137,207,240,0.15) 0%, transparent 70%)',
-                        pointerEvents: 'none',
-                      }}
-                      animate={shouldReduce || stage !== 'sitting' ? {} : {
-                        opacity: [0.3, 0.9, 0.3],
-                        scale:   [0.9, 1.1, 0.9],
-                      }}
-                      transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-
-                    <motion.button
-                      onClick={handleEnvelopeClick}
-                      aria-label="Open the letter"
-                      disabled={stage !== 'sitting'}
-                      style={{
-                        background:     'none',
-                        border:         'none',
-                        padding:        '8px',
-                        cursor:         stage === 'sitting' ? 'pointer' : 'default',
-                        display:        'flex',
-                        alignItems:     'center',
-                        justifyContent: 'center',
-                        minWidth:       '60px',
-                        minHeight:      '60px',
-                      } as CSSProperties}
-                      whileHover={stage === 'sitting' && !shouldReduce ? { scale: 1.08 } : undefined}
-                      whileTap={stage  === 'sitting' && !shouldReduce ? { scale: 0.95 } : undefined}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <EnvelopeSVG isOpen={envelopeOpen} shouldReduce={shouldReduce} />
-                    </motion.button>
-
-                    {/* "open" hint */}
-                    <AnimatePresence>
-                      {stage === 'sitting' && (
-                        <motion.p
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ delay: 1.5, duration: 0.8 }}
-                          style={{
-                            fontFamily:    'var(--font-inter)',
-                            fontSize:      '0.625rem',
-                            fontWeight:    300,
-                            letterSpacing: '0.2em',
-                            textTransform: 'uppercase',
-                            color:         'rgba(137,207,240,0.4)',
-                            textAlign:     'center',
-                            marginTop:     '10px',
-                            pointerEvents: 'none',
-                          }}
-                        >
-                          open
-                        </motion.p>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
+                    take the letter
+                  </motion.p>
                 )}
               </AnimatePresence>
 
@@ -490,7 +434,7 @@ export default function PomTransition() {
               )}
             </div>
 
-            {/* Spacer while hidden (prevents layout collapse) */}
+            {/* Spacer while hidden */}
             {stage === 'hidden' && (
               <FadeIn direction="none">
                 <p
@@ -511,42 +455,12 @@ export default function PomTransition() {
             )}
           </div>
         </Container>
-
-        {/* ── Dark overlay during opening ───────────────────────────── */}
-        <AnimatePresence>
-          {(stage === 'opening' || stage === 'done') && (
-            <motion.div
-              aria-hidden="true"
-              style={{
-                position:      'fixed',
-                inset:         0,
-                background:    'rgba(7,24,39,0.55)',
-                zIndex:        10,
-                pointerEvents: 'none',
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-            />
-          )}
-        </AnimatePresence>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════
-          LETTER — revealed after envelope opens
+          LETTER — always in the DOM; user scrolls to it naturally
       ══════════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showLetter && (
-          <motion.div
-            initial={{ opacity: 0, y: shouldReduce ? 0 : 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: shouldReduce ? 0.01 : 1.1, ease: [0.25, 0.1, 0.25, 1] }}
-          >
-            <Letter />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Letter />
     </>
   );
 }
