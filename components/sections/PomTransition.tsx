@@ -4,28 +4,23 @@
  * PomTransition.tsx
  * The bridge between the story chapters and the final letter.
  *
- * Sequence:
- * 1. Generous quiet space — night sky breathes.
- * 2. Pom walks in from the left using a 5-frame sprite animation at 10 FPS.
- * 3. Pom reaches center, transitions to sitting-with-envelope pose.
- * 4. Pom idles: blinks, tail wag, breathing.
- * 5. Envelope glows softly every few seconds.
- * 6. User clicks/taps the envelope.
- * 7. Opening sequence:
- *    a. Pom releases — steps back slightly.
- *    b. Envelope floats upward and enlarges.
- *    c. Background overlay darkens.
- *    d. Envelope flap opens (SVG animation).
- *    e. After completion → Letter section fades in.
- * 8. Volume ducks gently during the opening, restores when letter is visible.
+ * Stage machine (unchanged):
+ *   hidden → walking → sitting → releasing → opening → done
  *
- * Walk frames (10 FPS, 100ms per frame):
- *   /characters/pom/walk-1.png  through  walk-5.png
+ * Sprite mapping:
+ *   walking               → walk-1..5.png  (5-frame loop, ~9.5 FPS)
+ *   sitting               → sit.png        (breathing animation)
+ *   releasing             → sit-envelope.png
+ *   opening | done        → envelope-open.png
  *
- * Sitting / envelope sprites:
- *   /characters/pom/sit-envelope.png
- *   /characters/pom/sit.png
- *   /characters/pom/envelope-open.png
+ * Walking extras:
+ *   - Tiny vertical bob: translateY 0 → -2 → 0 → 2 → 0, ~0.45s per cycle
+ *
+ * Sitting extras:
+ *   - Breathing: scaleY 1 → 1.015 → 1, 2.5s loop, transformOrigin bottom
+ *
+ * All SVG placeholder graphics have been removed.
+ * No tail overlay SVG, no blink overlay — the PNG sprites handle everything.
  */
 
 import {
@@ -49,7 +44,6 @@ import Letter    from '@/components/sections/Letter';
 
 // ─── Asset paths ──────────────────────────────────────────────────────────
 
-// Walk cycle — 5 frames, played at 10 FPS (100ms per frame)
 const WALK_FRAMES = [
   '/characters/pom/walk-1.png',
   '/characters/pom/walk-2.png',
@@ -58,55 +52,50 @@ const WALK_FRAMES = [
   '/characters/pom/walk-5.png',
 ] as const;
 
-const SIT_ENVELOPE  = '/characters/pom/sit-envelope.png';
 const SIT           = '/characters/pom/sit.png';
+const SIT_ENVELOPE  = '/characters/pom/sit-envelope.png';
 const ENVELOPE_OPEN = '/characters/pom/envelope-open.png';
 
-// All assets that should be preloaded before walking begins
 const ALL_ASSETS: readonly string[] = [
   ...WALK_FRAMES,
-  SIT_ENVELOPE,
   SIT,
+  SIT_ENVELOPE,
   ENVELOPE_OPEN,
 ];
 
-// Walk animation: 100ms per frame = 10 FPS
-const WALK_FRAME_MS    = 100;
+// ~9.5 FPS
+const WALK_FRAME_MS    = 105;
 const WALK_FRAME_COUNT = WALK_FRAMES.length; // 5
 
 // ─── Sprite size ──────────────────────────────────────────────────────────
 
-const POM_W = 160; // px — rendered width
-const POM_H = 160; // px — rendered height
+const POM_W = 160;
+const POM_H = 160;
 
 // ─── Asset preloader ──────────────────────────────────────────────────────
-/**
- * Preloads all Pom sprite assets in parallel without blocking rendering.
- * Returns true when all walk frames have resolved (loaded or errored).
- * Logs a console warning for each image that fails to load.
- */
+// Returns true once all walk frames have resolved (loaded or errored).
+// Non-blocking — never delays rendering.
+
 function useSpritePreloader(): boolean {
   const [walkReady, setWalkReady] = useState(false);
 
   useEffect(() => {
-    let resolvedWalkCount = 0;
+    let resolvedWalk = 0;
 
     ALL_ASSETS.forEach((src) => {
       const img = new window.Image();
 
-      const onDone = () => {
+      const done = () => {
         if ((WALK_FRAMES as readonly string[]).includes(src)) {
-          resolvedWalkCount++;
-          if (resolvedWalkCount === WALK_FRAME_COUNT) {
-            setWalkReady(true);
-          }
+          resolvedWalk++;
+          if (resolvedWalk === WALK_FRAME_COUNT) setWalkReady(true);
         }
       };
 
-      img.onload  = onDone;
+      img.onload  = done;
       img.onerror = () => {
-        console.warn(`[PomTransition] Failed to preload sprite: ${src}`);
-        onDone();
+        console.warn(`[PomTransition] Sprite failed to load: ${src}`);
+        done();
       };
 
       img.src = src;
@@ -116,41 +105,39 @@ function useSpritePreloader(): boolean {
   return walkReady;
 }
 
-// ─── Sprite Pom ───────────────────────────────────────────────────────────
-// Renders a single sprite frame. No crossfade — just an img swap.
+// ─── Stage type ───────────────────────────────────────────────────────────
 
-interface SpritePomProps {
-  src:     string;
-  blink:   boolean;
-  breathe: boolean;
-}
+type PomStage =
+  | 'hidden'
+  | 'walking'
+  | 'sitting'
+  | 'releasing'
+  | 'opening'
+  | 'done';
 
-function SpritePom({ src, breathe }: SpritePomProps) {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
-      aria-hidden="true"
-      width={POM_W}
-      height={POM_H}
-      style={{
-        imageRendering:  'auto',           // preserve quality, no pixel-art scaling
-        transform:       breathe ? 'scaleY(1.015) translateY(-1px)' : 'scaleY(1)',
-        transition:      'transform 1.2s ease-in-out',
-        transformOrigin: 'bottom center',
-        display:         'block',
-        width:           `${POM_W}px`,    // fixed size prevents layout shift on frame swap
-        height:          `${POM_H}px`,
-        objectFit:       'contain',
-      }}
-    />
-  );
+// ─── Sprite source selection ──────────────────────────────────────────────
+// Pure function — no side-effects.
+
+function getSrc(stage: PomStage, walkFrame: number): string {
+  switch (stage) {
+    case 'hidden':
+    case 'walking':
+      return WALK_FRAMES[walkFrame];
+    case 'sitting':
+      return SIT;
+    case 'releasing':
+      return SIT_ENVELOPE;
+    case 'opening':
+    case 'done':
+      return ENVELOPE_OPEN;
+  }
 }
 
 // ─── Envelope SVG ─────────────────────────────────────────────────────────
-// Drawn as SVG so the flap can animate with Framer Motion.
-// Not modified in this prompt — kept identical to previous implementation.
+// The SVG envelope that floats above Pom during the sitting/releasing stages.
+// Still used because the real envelope asset for the floating overlay is SVG.
+// envelope-open.png is shown as the Pom sprite in the opening stage,
+// but the floating animated envelope element remains SVG.
 
 interface EnvelopeSVGProps {
   isOpen:       boolean;
@@ -202,44 +189,21 @@ function EnvelopeSVG({ isOpen, shouldReduce, style }: EnvelopeSVGProps) {
   );
 }
 
-// ─── Stage type ───────────────────────────────────────────────────────────
-// Unchanged — same state machine as before.
-
-type PomStage =
-  | 'hidden'
-  | 'walking'
-  | 'sitting'
-  | 'releasing'
-  | 'opening'
-  | 'done';
-
 // ─── Main Component ───────────────────────────────────────────────────────
 
 export default function PomTransition() {
   const shouldReduce = useReducedMotion() ?? false;
   const audio        = useContext(AudioContext);
+  const walkReady    = useSpritePreloader();
 
-  // Preload all sprites — walk begins once all walk frames are ready
-  const walkReady = useSpritePreloader();
-
-  // Stage machine state (unchanged)
   const [stage,      setStage]      = useState<PomStage>('hidden');
-  // Walk frame index: 0–4 cycling through WALK_FRAMES at 10 FPS
   const [walkFrame,  setWalkFrame]  = useState(0);
-  // Idle animation state (used when sitting)
-  const [blink,      setBlink]      = useState(false);
-  const [breathe,    setBreathe]    = useState(false);
-  const [wagPhase,   setWagPhase]   = useState(false);
   const [showLetter, setShowLetter] = useState(false);
 
-  const walkIntervalRef    = useRef<ReturnType<typeof setInterval>  | null>(null);
-  const blinkIntervalRef   = useRef<ReturnType<typeof setInterval>  | null>(null);
-  const breatheIntervalRef = useRef<ReturnType<typeof setInterval>  | null>(null);
-  const wagIntervalRef     = useRef<ReturnType<typeof setInterval>  | null>(null);
-  const sectionRef         = useRef<HTMLDivElement>(null);
-
-  const pomControls = useAnimation();
-  const envControls = useAnimation();
+  const walkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sectionRef      = useRef<HTMLDivElement>(null);
+  const pomControls     = useAnimation();
+  const envControls     = useAnimation();
 
   // ── Volume duck helper ──────────────────────────────────────────────
   const duckVolume = useCallback((targetVolume: number, durationMs: number) => {
@@ -259,36 +223,27 @@ export default function PomTransition() {
   // ── Trigger walk when section enters viewport ───────────────────────
   useEffect(() => {
     if (!sectionRef.current) return;
-
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && stage === 'hidden') {
-          setStage('walking');
-        }
+        if (entry.isIntersecting && stage === 'hidden') setStage('walking');
       },
       { threshold: 0.25 },
     );
-
     observer.observe(sectionRef.current);
     return () => observer.disconnect();
   }, [stage]);
 
-  // ── Walk animation ──────────────────────────────────────────────────
-  // 5-frame cycle at 10 FPS. Movement duration ~4s.
+  // ── Walk: frame cycle + horizontal movement ─────────────────────────
   useEffect(() => {
     if (stage !== 'walking') return;
 
-    // Advance one frame every 100ms — cycles 0 → 1 → 2 → 3 → 4 → 0 → …
     walkIntervalRef.current = setInterval(() => {
       setWalkFrame(f => (f + 1) % WALK_FRAME_COUNT);
     }, WALK_FRAME_MS);
 
-    // Translate from off-screen left to center
-    const walkDuration = shouldReduce ? 0.01 : 4;
-
     pomControls.start({
       x: 0,
-      transition: { duration: walkDuration, ease: 'linear' },
+      transition: { duration: shouldReduce ? 0.01 : 4, ease: 'linear' },
     }).then(() => {
       if (walkIntervalRef.current) clearInterval(walkIntervalRef.current);
       setStage('sitting');
@@ -299,46 +254,9 @@ export default function PomTransition() {
     };
   }, [stage, pomControls, shouldReduce]);
 
-  // ── Idle animations once sitting ────────────────────────────────────
-  // (unchanged from previous implementation)
-  useEffect(() => {
-    if (stage !== 'sitting') return;
-
-    const scheduleBlink = () => {
-      const delay = 3000 + Math.random() * 3000;
-      blinkIntervalRef.current = setTimeout(() => {
-        setBlink(true);
-        setTimeout(() => {
-          setBlink(false);
-          scheduleBlink();
-        }, 150);
-      }, delay) as unknown as ReturnType<typeof setInterval>;
-    };
-    scheduleBlink();
-
-    breatheIntervalRef.current = setInterval(() => {
-      setBreathe(b => !b);
-    }, 2000);
-
-    wagIntervalRef.current = setInterval(() => {
-      setWagPhase(w => !w);
-    }, 600);
-
-    return () => {
-      if (blinkIntervalRef.current)  clearTimeout(blinkIntervalRef.current as unknown as ReturnType<typeof setTimeout>);
-      if (breatheIntervalRef.current) clearInterval(breatheIntervalRef.current);
-      if (wagIntervalRef.current)     clearInterval(wagIntervalRef.current);
-    };
-  }, [stage]);
-
   // ── Envelope click ──────────────────────────────────────────────────
-  // (unchanged from previous implementation)
   const handleEnvelopeClick = useCallback(async () => {
     if (stage !== 'sitting') return;
-
-    if (blinkIntervalRef.current)   clearTimeout(blinkIntervalRef.current as unknown as ReturnType<typeof setTimeout>);
-    if (breatheIntervalRef.current) clearInterval(breatheIntervalRef.current);
-    if (wagIntervalRef.current)     clearInterval(wagIntervalRef.current);
 
     setStage('releasing');
     duckVolume(0.3, 1200);
@@ -364,18 +282,13 @@ export default function PomTransition() {
     duckVolume(0.6, 1500);
   }, [stage, pomControls, envControls, duckVolume, shouldReduce]);
 
-  // ── Computed values ──────────────────────────────────────────────────
+  // ── Derived values ───────────────────────────────────────────────────
 
   const isSitting    = stage === 'sitting' || stage === 'releasing' || stage === 'opening' || stage === 'done';
   const envelopeOpen = stage === 'opening' || stage === 'done';
   const isDone       = stage === 'done';
-
-  // Sprite source:
-  //   walking → cycle through WALK_FRAMES (5 frames)
-  //   sitting and beyond → sit-envelope sprite
-  const currentSrc: string = isSitting
-    ? SIT_ENVELOPE
-    : WALK_FRAMES[walkFrame];
+  const isWalking    = stage === 'walking';
+  const currentSrc   = getSrc(stage, walkFrame);
 
   return (
     <>
@@ -401,12 +314,11 @@ export default function PomTransition() {
               alignItems:    'center',
             }}
           >
-            {/* ── Pom + envelope stage ──────────────────────────────── */}
             <div
               aria-live="polite"
               aria-label={
                 isSitting
-                  ? 'A small Pomeranian sits patiently holding a glowing envelope'
+                  ? 'A small Pomeranian sits patiently'
                   : 'A small Pomeranian is walking toward you'
               }
               style={{
@@ -417,57 +329,70 @@ export default function PomTransition() {
                 justifyContent: 'center',
               }}
             >
-              {/* ── Pom sprite ───────────────────────────────────────── */}
-              {/*
-                Only renders once sprites are preloaded (walkReady).
-                currentSrc switches between walk frames and sit-envelope
-                automatically — no separate placeholder branch.
-              */}
+              {/* ── Pom sprite ─────────────────────────────────────── */}
               <AnimatePresence>
                 {stage !== 'hidden' && walkReady && (
                   <motion.div
                     key="pom"
                     style={{
-                      position: 'relative',
-                      zIndex:   2,
-                      x:        !isSitting ? '-50vw' : 0,
+                      position:        'relative',
+                      zIndex:          2,
+                      transformOrigin: 'bottom center',
                     }}
-                    initial={{ x: shouldReduce ? 0 : '-50vw', opacity: shouldReduce ? 1 : 0.8 }}
+                    initial={{ x: shouldReduce ? 0 : '-50vw', opacity: shouldReduce ? 1 : 0.85 }}
                     animate={pomControls}
                   >
-                    <SpritePom
-                      src={currentSrc}
-                      blink={blink}
-                      breathe={breathe}
-                    />
-
-                    {/* Tail wag overlay while sitting */}
-                    {isSitting && (
-                      <motion.div
+                    {/*
+                      Walking bob: tiny vertical oscillation while frames cycle.
+                      Only active during 'walking'; silenced otherwise.
+                      scaleY breathing: only active during 'sitting'.
+                    */}
+                    <motion.div
+                      style={{ transformOrigin: 'bottom center' }}
+                      animate={shouldReduce ? {} : isWalking
+                        // Subtle bob — 0 → -2 → 0 → 2 → 0 px, ~0.45s per cycle
+                        ? { y: [0, -2, 0, 2, 0] }
+                        // Breathing when sitting — scaleY 1 → 1.015 → 1
+                        : stage === 'sitting'
+                          ? { scaleY: [1, 1.015, 1] }
+                          : {}
+                      }
+                      transition={shouldReduce ? {} : isWalking
+                        ? {
+                            duration:   0.45,
+                            repeat:     Infinity,
+                            ease:       'easeInOut',
+                            repeatType: 'loop',
+                          }
+                        : {
+                            duration:   2.5,
+                            repeat:     Infinity,
+                            ease:       'easeInOut',
+                            repeatType: 'mirror',
+                          }
+                      }
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={currentSrc}
+                        alt=""
                         aria-hidden="true"
+                        draggable={false}
                         style={{
-                          position:        'absolute',
-                          right:           '-8px',
-                          bottom:          '28px',
-                          width:           '22px',
-                          height:          '12px',
-                          borderRadius:    '0 50% 50% 0',
-                          border:          '1.5px solid rgba(255,244,194,0.4)',
-                          borderLeft:      'none',
-                          transformOrigin: 'left center',
+                          display:        'block',
+                          width:          `${POM_W}px`,
+                          height:         `${POM_H}px`,
+                          objectFit:      'contain',
+                          imageRendering: 'auto',
+                          // No extra CSS transforms — Framer Motion handles all movement
                         }}
-                        animate={shouldReduce ? {} : wagPhase
-                          ? { rotate: 25, scaleY: 1.1 }
-                          : { rotate: -15, scaleY: 0.9 }
-                        }
-                        transition={{ duration: 0.35, ease: 'easeInOut' }}
                       />
-                    )}
+                    </motion.div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* ── Envelope (floating above Pom while sitting) ──────── */}
+              {/* ── Envelope overlay (floating, sits above Pom) ──────── */}
               <AnimatePresence>
                 {isSitting && !isDone && (
                   <motion.div
@@ -481,7 +406,7 @@ export default function PomTransition() {
                       cursor:   stage === 'sitting' ? 'pointer' : 'default',
                     }}
                   >
-                    {/* Breathing glow behind envelope */}
+                    {/* Glow behind envelope */}
                     <motion.div
                       aria-hidden="true"
                       style={{
@@ -517,13 +442,10 @@ export default function PomTransition() {
                       whileTap={stage  === 'sitting' && !shouldReduce ? { scale: 0.95 } : undefined}
                       transition={{ duration: 0.2 }}
                     >
-                      <EnvelopeSVG
-                        isOpen={envelopeOpen}
-                        shouldReduce={shouldReduce}
-                      />
+                      <EnvelopeSVG isOpen={envelopeOpen} shouldReduce={shouldReduce} />
                     </motion.button>
 
-                    {/* "open" hint while waiting */}
+                    {/* "open" hint */}
                     <AnimatePresence>
                       {stage === 'sitting' && (
                         <motion.p
@@ -551,7 +473,7 @@ export default function PomTransition() {
                 )}
               </AnimatePresence>
 
-              {/* ── Ground line ──────────────────────────────────────── */}
+              {/* ── Ground line ─────────────────────────────────────── */}
               {stage !== 'hidden' && (
                 <div
                   aria-hidden="true"
@@ -568,7 +490,7 @@ export default function PomTransition() {
               )}
             </div>
 
-            {/* ── Empty-space holder while stage is hidden ─────────────── */}
+            {/* Spacer while hidden (prevents layout collapse) */}
             {stage === 'hidden' && (
               <FadeIn direction="none">
                 <p
@@ -590,7 +512,7 @@ export default function PomTransition() {
           </div>
         </Container>
 
-        {/* ── Darkening overlay during envelope opening ─────────────── */}
+        {/* ── Dark overlay during opening ───────────────────────────── */}
         <AnimatePresence>
           {(stage === 'opening' || stage === 'done') && (
             <motion.div
