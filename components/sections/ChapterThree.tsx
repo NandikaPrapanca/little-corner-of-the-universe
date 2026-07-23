@@ -249,7 +249,7 @@ export default function ChapterThree() {
                 color:         'rgba(137,207,240,0.5)',
               }}
             >
-              The things I&apos;ll always associate with Candy.
+              The things I&apos;ll always associate with you.
             </p>
           </FadeIn>
 

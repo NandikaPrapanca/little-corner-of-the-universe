@@ -439,20 +439,11 @@ export default function ChapterTwo() {
                     alignItems:    'flex-start',
                   }}
                 >
-                  <BodyText>
-                    We had just reached the new moon area in Genshin. It reminded me
-                    so much of Cyberpunk: Edgerunners that I couldn&apos;t help typing...
-                  </BodyText>
 
                   {/* In-game chat bubble */}
                   <ChatBubble text="sorry, wish we could goto the moon together." />
 
-                  <BodyText italic soft>
-                    Looking back...
-                  </BodyText>
-                  <BodyText>
-                    I think that quietly became one of my favorite screenshots.
-                  </BodyText>
+      
                 </div>
               </ScrapPhoto>
             </div>
@@ -512,21 +503,71 @@ export default function ChapterTwo() {
                 alt="Photo you sent out of nowhere"
                 rotation={-2}
                 tapeCorner="top-right"
-                caption="You sent me this one completely out of nowhere."
+                caption="Woppaaaaaa."
                 maxWidth="300px"
                 aspectRatio="3/4"
                 align="right"
               >
                 <div style={{ textAlign: 'right' }}>
                   <BodyText align="center">
-                    It still makes me smile every time I see it.
+                    Cute looking ahh girl.
                   </BodyText>
                 </div>
               </ScrapPhoto>
             </div>
           </FadeIn>
 
+            {/* ── Gap between photos ─────────────────────────────────── */}
+          <div style={{ height: 'clamp(3.5rem, 8vw, 6rem)' }} aria-hidden="true" />
 
+
+            {/* ════════════════════════════════════════════════════════
+              PHOTO FOUR — Hero, centered, largest
+          ════════════════════════════════════════════════════════ */}
+          <FadeIn direction="none">
+            {/* Relative wrapper for scattered decorations */}
+            <div style={{ position: 'relative', marginBottom: 'clamp(1rem, 3vw, 2rem)' }}>
+
+              {/* Scattered tiny stars around photo one */}
+              <TinyStar style={{ top: '12%',  left: '-2%',  opacity: 0.6 }} size={2.5} />
+              <TinyStar style={{ top: '5%',   right: '8%',  opacity: 0.45 }} size={2} />
+              <TinyStar style={{ bottom: '20%', right: '-1%', opacity: 0.5 }} size={2} />
+              <Sparkle  style={{ top: '-12px', left: '15%',  transform: 'rotate(15deg)' }} />
+              <Sparkle  style={{ bottom: '30px', right: '12%', transform: 'rotate(-20deg)' }} />
+
+              <ScrapPhoto
+                src="/photos/img04-baby.webp"
+                alt="Genshin Impact screenshot — the moon area we explored together"
+                rotation={-1.5}
+                tapeCorner="top-left"
+                caption="Just a baby."
+                maxWidth="480px"
+                aspectRatio="4/3"
+                align="center"
+              >
+                <div
+                  style={{
+                    display:       'flex',
+                    flexDirection: 'column',
+                    gap:           '1.25rem',
+                    alignItems:    'flex-start',
+                  }}
+                >
+
+                  {/* In-game chat bubble */}
+                  <ChatBubble text="AWWWWWWWWWWWWWWWWWWWWWW." />
+
+      
+                </div>
+              </ScrapPhoto>
+            </div>
+          </FadeIn>
+
+
+          {/* ── Gap between photos ─────────────────────────────────── */}
+          <div style={{ height: 'clamp(3.5rem, 8vw, 6rem)' }} aria-hidden="true" />
+
+          
           {/* ── Final breathing space ───────────────────────────────── */}
           <div style={{ position: 'relative' }}>
             <div style={{ height: 'clamp(2rem, 5vw, 4rem)' }} aria-hidden="true" />
