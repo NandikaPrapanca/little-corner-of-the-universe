@@ -23,13 +23,13 @@ import { motion, useReducedMotion } from 'framer-motion';
 
 const PARAGRAPHS: string[] = [
   'Hi, Candy.',
-  'If you\'re reading this, then I guess my little pomeranian managed to find you after all.',
+  'If you\'re reading this, then I guess Hazel managed to find you after all (as she should).',
   'Happy seventeenth birthday.',
-  'Before anything else... thank you for scrolling all the way here. I know it was a long journey, but I hope this tiny little corner of the universe managed to make you smile at least once.',
+  'Before anything else... thank you for scrolling all the way here. I know it was a long journey, but I hope this tiny little corner of the universe managed to make you smile at least once. Apologies if its not a perfect gift for your birthday',
   'When I first started making this, I kept wondering what I wanted you to feel after reaching the end. I didn\'t want it to be overly dramatic or anything like that. I just wanted to make something that was... us. A collection of moments, memories, and all the little things that somehow became important without either of us realizing it.',
   'It\'s honestly funny how everything started.',
-  'Out of all the places we could\'ve met, it happened because of a random Discord call while we were playing Roblox with Albani. If someone had told me back then that we\'d end up talking almost every single day, I probably would\'ve laughed and said, "Yeah... probably not."',
-  'And yet, here we are.',
+  'Out of all the places we could\'ve met, it happened because of a random Discord call while we were playing with Albani. If someone had told me back then that we\'d end up talking almost every single day, I probably would\'ve laughed and said, "Yeah... probably not." not because i hate you (never will) but because i couldnt imagine my life like that and im scared to try it.',
+  'And yet, here we are and im very grateful for it.',
   'Somewhere along the way, checking if you had messaged me quietly became part of my day. Calls became normal. Random conversations somehow turned into hours without either of us noticing. It never really felt like something extraordinary, it just felt... comfortable.',
   'And I think that\'s what made it special.',
   'People usually remember the big moments in life.\nThe birthdays.\nThe trips.\nThe celebrations.',
