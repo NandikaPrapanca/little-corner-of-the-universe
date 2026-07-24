@@ -274,7 +274,7 @@ export default function ChapterOne() {
             />
 
             <Beat
-              text="Somewhere between random games, late-night calls, listening to every story you had to tell, and countless conversations..."
+              text="Somewhere between random games, late night calls, listening to every story you had to tell, and countless conversations..."
             />
 
             <Beat
