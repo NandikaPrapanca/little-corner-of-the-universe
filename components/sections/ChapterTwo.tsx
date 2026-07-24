@@ -441,7 +441,7 @@ export default function ChapterTwo() {
                 >
 
                   {/* In-game chat bubble */}
-                  <ChatBubble text="sorry, wish we could goto the moon together." />
+                  <ChatBubble text="sorry, wish we could go to the moon together." />
 
       
                 </div>
