@@ -7,12 +7,20 @@
 
 import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
+import { Printer } from 'lucide-react';
 import FadeIn     from '@/components/ui/FadeIn';
 import Container  from '@/components/ui/Container';
 import Divider    from '@/components/ui/Divider';
 
 export default function Ending() {
   const shouldReduce = useReducedMotion();
+
+  const handlePrint = () => {
+    if (typeof window !== 'undefined') {
+      window.print();
+    }
+  };
+
   return (
     <section
       id="ending"
@@ -76,6 +84,31 @@ export default function Ending() {
               className="object-contain"
             />
           </div>
+        </FadeIn>
+
+        {/* ── "Save This Letter" Keepsake Print Button ────────────────── */}
+        <FadeIn delay={0.65}>
+          <button
+            onClick={handlePrint}
+            aria-label="Save this letter as PDF or print"
+            className="save-letter-btn inline-flex items-center gap-2 px-5 py-2.5 rounded-full transition-all duration-300"
+            style={{
+              background: 'rgba(16, 37, 61, 0.65)',
+              border: '1px solid rgba(137, 207, 240, 0.25)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              color: '#F8FAFC',
+              fontFamily: 'var(--font-inter)',
+              fontSize: '0.8125rem',
+              fontWeight: 300,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+            }}
+          >
+            <Printer size={14} style={{ color: '#89CFF0', opacity: 0.85 }} />
+            <span>Save This Letter</span>
+          </button>
         </FadeIn>
 
         {/* ── Quiet footer note ───────────────────────────────────────── */}

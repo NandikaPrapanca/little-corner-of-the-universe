@@ -30,8 +30,11 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useContext,
 } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { AudioContext } from '@/components/AudioProvider';
+import { playStarChime } from '@/utils/soundEffects';
 import FadeIn       from '@/components/ui/FadeIn';
 import Container    from '@/components/ui/Container';
 import BobEasterEgg from '@/components/ui/BobEasterEgg';
@@ -354,6 +357,7 @@ function useIsMobile(breakpoint = 560): boolean {
 export default function ChapterFour() {
   const shouldReduce = useReducedMotion() ?? false;
   const isMobile     = useIsMobile();
+  const audio        = useContext(AudioContext);
 
   const [openId,        setOpenId]        = useState<number | null>(null);
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
@@ -409,6 +413,10 @@ export default function ChapterFour() {
   const handleNodeClick = useCallback((id: number) => {
     const isClosing = id === openId;
 
+    if (!isClosing) {
+      playStarChime(audio?.isMuted ?? false);
+    }
+
     // Toggle open/closed
     setOpenId(isClosing ? null : id);
 
@@ -416,7 +424,7 @@ export default function ChapterFour() {
       setHighlightedId(null);
       if (highlightTimer.current) clearTimeout(highlightTimer.current);
     }
-  }, [openId]);
+  }, [openId, audio?.isMuted]);
 
   const handleClose = useCallback(() => {
     setOpenId(null);

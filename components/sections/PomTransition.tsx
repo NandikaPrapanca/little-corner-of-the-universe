@@ -43,6 +43,7 @@ import {
   useAnimation,
 } from 'framer-motion';
 import { AudioContext } from '@/components/AudioProvider';
+import { playEnvelopeRustle } from '@/utils/soundEffects';
 import FadeIn    from '@/components/ui/FadeIn';
 import Container from '@/components/ui/Container';
 import Letter    from '@/components/sections/Letter';
@@ -267,6 +268,9 @@ export default function PomTransition() {
     setStage('releasing');
     setEnvHovered(false);
 
+    // Play tactile paper foley (respecting mute state)
+    playEnvelopeRustle(audio?.isMuted ?? false);
+
     // Subtle audio duck
     duckVolume(0.35, 800);
 
@@ -294,7 +298,7 @@ export default function PomTransition() {
     // Restore volume after scroll starts
     if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
     restoreTimerRef.current = setTimeout(() => restoreVolume(1000), 600);
-  }, [stage, duckVolume, restoreVolume, shouldReduce]);
+  }, [stage, duckVolume, restoreVolume, shouldReduce, audio?.isMuted]);
 
   // ── Derived ──────────────────────────────────────────────────────────
 

@@ -233,4 +233,90 @@ p {
     min-height: 0;
     /* No visible style — purely a layout anchor */
   }
+
+  /* "Save This Letter" button hover effect */
+  .save-letter-btn:hover {
+    background: rgba(137, 207, 240, 0.15) !important;
+    border-color: rgba(137, 207, 240, 0.45) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(137, 207, 240, 0.2) !important;
+  }
+}
+
+/* ── Print / Keepsake PDF Styles ─────────────────────────────────────────── */
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: auto;
+  }
+
+  /* Reset document backgrounds for clean paper print */
+  html, body {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide entire page structure except printable letter */
+  #landing,
+  #chapter-one,
+  #chapter-two,
+  #chapter-three,
+  #chapter-four,
+  #pom-transition,
+  #ending,
+  [role="presentation"],
+  [role="region"],
+  [role="navigation"],
+  [role="status"],
+  .save-letter-btn,
+  .section-divider,
+  a[href="#main-content"] {
+    display: none !important;
+  }
+
+  /* Show the letter container cleanly centered */
+  #main-content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .printable-letter-section {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .printable-letter-card {
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  /* Ensure all paragraphs render with full opacity and crisp typography */
+  .printable-paragraph {
+    opacity: 1 !important;
+    transform: none !important;
+    color: #1a1a1a !important;
+    font-family: var(--font-cormorant), Georgia, serif !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  p, span, div {
+    text-shadow: none !important;
+  }
 }

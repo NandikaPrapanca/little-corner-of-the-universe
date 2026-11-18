@@ -100,6 +100,7 @@ export default function Letter() {
     <section
       id="letter"
       aria-label="Birthday letter"
+      className="printable-letter-section"
       style={{
         paddingTop:    'clamp(4rem, 10vw, 7rem)',
         paddingBottom: 'clamp(6rem, 14vw, 10rem)',
@@ -110,6 +111,7 @@ export default function Letter() {
     >
       {/* ── Paper card — fades up as a whole on mount ────────────── */}
       <motion.div
+        className="printable-letter-card"
         initial={{ opacity: 0, y: shouldReduce ? 0 : 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{
@@ -191,6 +193,7 @@ export default function Letter() {
             return (
               <motion.p
                 key={i}
+                className="printable-paragraph"
                 {...paraVariant(i)}
                 style={{
                   marginBottom: 'clamp(1.1rem, 2.5vw, 1.5rem)',
@@ -213,6 +216,7 @@ export default function Letter() {
 
           {/* ── Signature ───────────────────────────────────────── */}
           <motion.p
+            className="printable-paragraph"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{
@@ -234,6 +238,7 @@ export default function Letter() {
 
           {/* ── P.S. ────────────────────────────────────────────── */}
           <motion.p
+            className="printable-paragraph"
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.70 }}
             transition={{
