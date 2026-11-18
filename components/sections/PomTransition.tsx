@@ -147,23 +147,80 @@ export default function PomTransition() {
   const [letterUnlocked, setLetterUnlocked] = useState(false);
 
   const walkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const duckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRef      = useRef<HTMLDivElement>(null);
   const pomControls     = useAnimation();
 
-  // ── Volume duck helper (audio untouched per spec) ───────────────────
+  // Stores user's audio state prior to ducking so it can be restored cleanly
+  const priorAudioState = useRef<{ volume: number; isMuted: boolean } | null>(null);
+
+  // ── Volume duck helper ──────────────────────────────────────────────
   const duckVolume = useCallback((targetVolume: number, durationMs: number) => {
     if (!audio) return;
+    if (duckIntervalRef.current) {
+      clearInterval(duckIntervalRef.current);
+      duckIntervalRef.current = null;
+    }
+
+    // Capture state only on initial duck
+    if (!priorAudioState.current) {
+      priorAudioState.current = { volume: audio.volume, isMuted: audio.isMuted };
+    }
+
+    // Never unmute if user has muted audio
+    if (priorAudioState.current.isMuted || audio.isMuted) return;
+
     const start  = audio.volume;
     const delta  = targetVolume - start;
     const steps  = 20;
     const stepMs = durationMs / steps;
     let i = 0;
-    const id = setInterval(() => {
+    duckIntervalRef.current = setInterval(() => {
       i++;
       audio.setVolume(Math.max(0, Math.min(1, start + delta * (i / steps))));
-      if (i >= steps) clearInterval(id);
+      if (i >= steps) {
+        if (duckIntervalRef.current) clearInterval(duckIntervalRef.current);
+        duckIntervalRef.current = null;
+      }
     }, stepMs);
   }, [audio]);
+
+  const restoreVolume = useCallback((durationMs: number) => {
+    if (!audio) return;
+    if (duckIntervalRef.current) {
+      clearInterval(duckIntervalRef.current);
+      duckIntervalRef.current = null;
+    }
+
+    const prior = priorAudioState.current;
+    priorAudioState.current = null;
+
+    if (!prior || prior.isMuted || audio.isMuted) return;
+
+    const start  = audio.volume;
+    const target = prior.volume;
+    const delta  = target - start;
+    const steps  = 20;
+    const stepMs = durationMs / steps;
+    let i = 0;
+    duckIntervalRef.current = setInterval(() => {
+      i++;
+      audio.setVolume(Math.max(0, Math.min(1, start + delta * (i / steps))));
+      if (i >= steps) {
+        if (duckIntervalRef.current) clearInterval(duckIntervalRef.current);
+        duckIntervalRef.current = null;
+      }
+    }, stepMs);
+  }, [audio]);
+
+  useEffect(() => {
+    return () => {
+      if (duckIntervalRef.current) clearInterval(duckIntervalRef.current);
+      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+      if (walkIntervalRef.current) clearInterval(walkIntervalRef.current);
+    };
+  }, []);
 
   // ── Walk trigger ────────────────────────────────────────────────────
   useEffect(() => {
@@ -180,7 +237,7 @@ export default function PomTransition() {
 
   // ── Walk: frame cycle + horizontal movement ─────────────────────────
   useEffect(() => {
-    if (stage !== 'walking') return;
+    if (stage !== 'walking' || !walkReady) return;
 
     walkIntervalRef.current = setInterval(() => {
       setWalkFrame(f => (f + 1) % WALK_FRAME_COUNT);
@@ -197,7 +254,7 @@ export default function PomTransition() {
     return () => {
       if (walkIntervalRef.current) clearInterval(walkIntervalRef.current);
     };
-  }, [stage, pomControls, shouldReduce]);
+  }, [stage, walkReady, pomControls, shouldReduce]);
 
   // ── Envelope click ───────────────────────────────────────────────────
   // 1. Instant sprite swap to sit.png
@@ -235,8 +292,9 @@ export default function PomTransition() {
     });
 
     // Restore volume after scroll starts
-    setTimeout(() => duckVolume(0.6, 1000), 600);
-  }, [stage, duckVolume, shouldReduce]);
+    if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+    restoreTimerRef.current = setTimeout(() => restoreVolume(1000), 600);
+  }, [stage, duckVolume, restoreVolume, shouldReduce]);
 
   // ── Derived ──────────────────────────────────────────────────────────
 
@@ -299,6 +357,7 @@ export default function PomTransition() {
                       position:        'relative',
                       zIndex:          2,
                       transformOrigin: 'bottom center',
+                      willChange:      'transform',
                     }}
                     initial={{ x: shouldReduce ? 0 : '-50vw', opacity: shouldReduce ? 1 : 0.85 }}
                     animate={pomControls}
@@ -344,6 +403,10 @@ export default function PomTransition() {
                         src={currentSrc}
                         alt=""
                         aria-hidden="true"
+                        width={POM_W}
+                        height={POM_H}
+                        loading="lazy"
+                        decoding="async"
                         draggable={false}
                         style={{
                           display:        'block',

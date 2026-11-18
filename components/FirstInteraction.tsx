@@ -41,6 +41,11 @@ export default function FirstInteraction() {
       // Hide the hint
       setInteracted(true);
 
+      // Signal Landing to unlock scrolling if envelope wasn't clicked directly
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('first-user-interaction'));
+      }
+
       // Start music with 2-second volume fade-in
       audio?.playFaded(0.6, 2000);
     }

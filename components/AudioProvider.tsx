@@ -82,10 +82,11 @@ interface AudioProviderProps {
 }
 
 export default function AudioProvider({ children }: AudioProviderProps) {
-  const audioRef      = useRef<HTMLAudioElement | null>(null);
-  const cancelFadeRef = useRef<(() => void) | null>(null);
+  const audioRef        = useRef<HTMLAudioElement | null>(null);
+  const cancelFadeRef   = useRef<(() => void) | null>(null);
+  const fadeTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks user's intended volume so visibility duck can restore correctly
-  const userVolumeRef = useRef<number>(TARGET_VOLUME);
+  const userVolumeRef   = useRef<number>(TARGET_VOLUME);
 
   const [isPlaying,  setIsPlaying]   = useState(false);
   const [isMuted,    setIsMuted]     = useState(false);
@@ -98,7 +99,7 @@ export default function AudioProvider({ children }: AudioProviderProps) {
     const audio   = new Audio(AUDIO_SRC);
     audio.loop    = true;
     audio.volume  = 0;       // always start silent; playFaded will raise it
-    audio.preload = 'auto';
+    audio.preload = 'metadata';
 
     const onCanPlayThrough = () => setIsLoaded(true);
     const onError = () => { if (audio.error) setHasError(true); };
@@ -116,6 +117,7 @@ export default function AudioProvider({ children }: AudioProviderProps) {
 
     return () => {
       if (cancelFadeRef.current) cancelFadeRef.current();
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
       audio.removeEventListener('canplaythrough', onCanPlayThrough);
       audio.removeEventListener('error',          onError);
       audio.removeEventListener('ended',          onEnded);
@@ -152,7 +154,19 @@ export default function AudioProvider({ children }: AudioProviderProps) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = isMuted ? 0 : userVolumeRef.current;
+    if (isMuted) {
+      if (cancelFadeRef.current) {
+        cancelFadeRef.current();
+        cancelFadeRef.current = null;
+      }
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+        fadeTimeoutRef.current = null;
+      }
+      audio.volume = 0;
+    } else {
+      audio.volume = userVolumeRef.current;
+    }
   }, [isMuted]);
 
   // ── playFaded — first-interaction entry point ─────────────────────────
@@ -165,22 +179,44 @@ export default function AudioProvider({ children }: AudioProviderProps) {
     const audio = audioRef.current;
     if (!audio || !audio.paused) return;
 
-    // Ensure we start at 0 for a clean fade-in
-    audio.volume        = 0;
     userVolumeRef.current = targetVolume; // set user intent now
 
     try {
+      if (audio.preload !== 'auto') {
+        audio.preload = 'auto';
+      }
       await audio.play();
       setIsPlaying(true);
+
+      if (cancelFadeRef.current) {
+        cancelFadeRef.current();
+        cancelFadeRef.current = null;
+      }
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+        fadeTimeoutRef.current = null;
+      }
+
+      if (isMuted) {
+        audio.volume = 0;
+        setVolumeState(targetVolume);
+        return;
+      }
+
+      // Ensure we start at 0 for a clean fade-in
+      audio.volume = 0;
+
       // Fade from 0 → targetVolume
-      if (cancelFadeRef.current) cancelFadeRef.current();
       cancelFadeRef.current = fadeVolume(audio, targetVolume, fadeMs, 40);
       // Sync React state at the end of the fade
-      setTimeout(() => setVolumeState(targetVolume), fadeMs);
+      fadeTimeoutRef.current = setTimeout(() => {
+        setVolumeState(targetVolume);
+        fadeTimeoutRef.current = null;
+      }, fadeMs);
     } catch {
       // Browser still blocked — leave paused, button works normally
     }
-  }, []);
+  }, [isMuted]);
 
   // ── requestPlay — button / envelope entry point ───────────────────────
   const requestPlay = useCallback(async () => {
@@ -193,6 +229,9 @@ export default function AudioProvider({ children }: AudioProviderProps) {
     }
 
     try {
+      if (audio.preload !== 'auto') {
+        audio.preload = 'auto';
+      }
       await audio.play();
       setIsPlaying(true);
     } catch {
@@ -204,13 +243,22 @@ export default function AudioProvider({ children }: AudioProviderProps) {
   const pause = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (cancelFadeRef.current) cancelFadeRef.current();
+    if (cancelFadeRef.current) {
+      cancelFadeRef.current();
+      cancelFadeRef.current = null;
+    }
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current);
+      fadeTimeoutRef.current = null;
+    }
     audio.pause();
     setIsPlaying(false);
   }, []);
 
   // ── toggleMute ────────────────────────────────────────────────────────
-  const toggleMute = useCallback(() => setIsMuted(p => !p), []);
+  const toggleMute = useCallback(() => {
+    setIsMuted(p => !p);
+  }, []);
 
   // ── setVolume — used by MusicPlayer slider and PomTransition duck ──────
   const setVolume = useCallback((v: number) => {
@@ -224,6 +272,10 @@ export default function AudioProvider({ children }: AudioProviderProps) {
     if (cancelFadeRef.current) {
       cancelFadeRef.current();
       cancelFadeRef.current = null;
+    }
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current);
+      fadeTimeoutRef.current = null;
     }
     audio.volume = clamped;
   }, []);

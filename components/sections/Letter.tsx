@@ -74,10 +74,10 @@ const PARAGRAPHS: string[] = [
 
 // ─── Animation helpers ────────────────────────────────────────────────────
 
-const STAGGER   = 0.12;  // seconds between paragraphs
-const PARA_DUR  = 0.55;  // seconds per paragraph fade
-const SIG_DELAY = PARAGRAPHS.length * STAGGER + 0.3;
-const PS_DELAY  = SIG_DELAY + 2.5;
+const STAGGER   = 0.045;  // seconds between paragraphs
+const PARA_DUR  = 0.4;    // seconds per paragraph fade
+const SIG_DELAY = Math.min(PARAGRAPHS.length * STAGGER + 0.2, 2.5);
+const PS_DELAY  = SIG_DELAY + 0.8;
 
 // ─── Component ────────────────────────────────────────────────────────────
 
@@ -119,11 +119,6 @@ export default function Letter() {
         style={{
           width:        '100%',
           maxWidth:     '700px',
-          // Warm off-white paper
-          background:   `
-            radial-gradient(ellipse at 18% 8%, rgba(255,253,245,0.95) 0%, transparent 65%),
-            linear-gradient(160deg, #FDFAF2 0%, #F8F5EF 45%, #F3EFE3 100%)
-          `,
           borderRadius: '6px',
           padding:      'clamp(2.25rem, 6vw, 4rem)',
           position:     'relative',
@@ -134,8 +129,8 @@ export default function Letter() {
             0 28px  64px rgba(0,0,0,0.10),
             inset 0 0 0 1px rgba(200,185,150,0.18)
           `,
-          // Subtle paper grain via repeating gradient
-          backgroundImage: `
+          // Warm off-white paper with subtle paper grain via repeating gradient
+          background: `
             radial-gradient(ellipse at 18% 8%, rgba(255,253,245,0.95) 0%, transparent 65%),
             linear-gradient(160deg, #FDFAF2 0%, #F8F5EF 45%, #F3EFE3 100%),
             repeating-linear-gradient(

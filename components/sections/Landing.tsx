@@ -37,12 +37,14 @@ import { AudioContext } from '@/components/AudioProvider';
 
 // ─── Tiny particle emitted when envelope opens ────────────────────────────
 interface Particle {
-  id:     number;
-  x:      number; // px offset from envelope center
-  drift:  number; // final x drift
-  size:   number;
-  delay:  number;
-  color:  string;
+  id:       number;
+  x:        number; // px offset from envelope center
+  drift:    number; // final x drift
+  targetY:  number; // final y drift
+  duration: number; // animation duration
+  size:     number;
+  delay:    number;
+  color:    string;
 }
 
 function makeParticles(): Particle[] {
@@ -52,12 +54,14 @@ function makeParticles(): Particle[] {
     'rgba(255,244,194,0.8)',
   ];
   return Array.from({ length: 12 }, (_, i) => ({
-    id:    i,
-    x:     (Math.random() - 0.5) * 60,
-    drift: (Math.random() - 0.5) * 80,
-    size:  1.5 + Math.random() * 2,
-    delay: Math.random() * 0.3,
-    color: colors[i % colors.length],
+    id:       i,
+    x:        ((i * 17) % 60) - 30,
+    drift:    (((i * 29) % 80) - 40),
+    targetY:  -55 - ((i * 7) % 40),
+    duration: 1.2 + ((i * 11) % 6) * 0.1,
+    size:     1.5 + ((i * 3) % 20) * 0.1,
+    delay:    ((i * 5) % 30) * 0.01,
+    color:    colors[i % colors.length],
   }));
 }
 
@@ -158,21 +162,31 @@ export default function Landing() {
 
   const [envelopeOpen,    setEnvelopeOpen]    = useState(false);
   const [showParticles,   setShowParticles]   = useState(false);
-  const [hasInteracted,   setHasInteracted]   = useState(false);
+  const [scrollUnlocked,  setScrollUnlocked]  = useState(false);
   const [particles]                           = useState<Particle[]>(makeParticles);
 
-  const envelopeControls = useAnimation();
-  const scrollTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const particleTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Scroll lock — enforced until user opens the envelope ────────────
-  // Three-layer defence:
+  // ── Scroll lock — enforced until user opens the envelope or interacts ──
+  // Four-layer defence:
   //   1. overflow:hidden on body  (simple cases)
   //   2. wheel + touchmove preventDefault  (mouse wheel, trackpad, touch)
   //   3. keydown preventDefault  (keyboard arrows, space, page keys)
   //   4. scroll event → window.scrollTo(0,0)  (catches anything that slips through)
-  // Everything is removed the instant hasInteracted becomes true.
+  // Everything is removed the instant scrollUnlocked becomes true.
   useEffect(() => {
-    if (hasInteracted) return; // don't re-lock after unlock
+    // Listen for custom event from FirstInteraction so tapping anywhere unlocks scrolling
+    const onFirstInteract = () => {
+      setScrollUnlocked(true);
+    };
+    window.addEventListener('first-user-interaction', onFirstInteract, { once: true });
+
+    if (scrollUnlocked) {
+      return () => {
+        window.removeEventListener('first-user-interaction', onFirstInteract);
+      };
+    }
 
     // Layer 1 — CSS
     document.body.style.overflow    = 'hidden';
@@ -195,6 +209,7 @@ export default function Landing() {
     window.addEventListener('scroll', snapBack, { passive: true });
 
     return () => {
+      window.removeEventListener('first-user-interaction', onFirstInteract);
       document.body.style.overflow    = '';
       document.body.style.touchAction = '';
       window.removeEventListener('wheel',     stopScroll);
@@ -202,43 +217,47 @@ export default function Landing() {
       window.removeEventListener('keydown',   blockKeys);
       window.removeEventListener('scroll',    snapBack);
     };
-  }, [hasInteracted]); // re-runs once when hasInteracted flips to true → effect returns cleanup, restores everything
+  }, [scrollUnlocked]);
 
-  // Cleanup scroll timer on unmount
+  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
+      if (particleTimer.current) clearTimeout(particleTimer.current);
     };
   }, []);
 
   const handleEnvelopeClick = useCallback(async () => {
-    if (hasInteracted) return; // only open once
-    setHasInteracted(true);
+    if (envelopeOpen) return; // only open once
 
-    // 1. Start music immediately on the user gesture
-    if (audio) {
+    // Immediately release scroll lock so smooth scroll can proceed cleanly
+    document.body.style.overflow    = '';
+    document.body.style.touchAction = '';
+    setScrollUnlocked(true);
+    setEnvelopeOpen(true);
+
+    // 1. Start music immediately on the user gesture (respecting mute state)
+    if (audio && !audio.isMuted) {
       audio.requestPlay().catch((err: unknown) => {
         console.warn('[Landing] audio.requestPlay rejected:', err);
       });
     }
 
-    // 2. Envelope opening animation
-    setEnvelopeOpen(true);
-
-    // 3. Small particles drift up
+    // 2. Small particles drift up
     if (!shouldReduce) {
       setShowParticles(true);
-      setTimeout(() => setShowParticles(false), 1800);
+      if (particleTimer.current) clearTimeout(particleTimer.current);
+      particleTimer.current = setTimeout(() => setShowParticles(false), 1800);
     }
 
-    // 4. After 600ms delay, scroll to chapter one
+    // 3. After 600ms delay (or immediately for reduced motion), smooth-scroll to chapter one
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
     scrollTimer.current = setTimeout(() => {
-      const next = document.getElementById('chapter-one');
-      if (next) {
-        next.scrollIntoView({ behavior: shouldReduce ? 'auto' : 'smooth' });
-      }
-    }, 600);
-  }, [hasInteracted, audio, shouldReduce, envelopeControls]);
+      document.getElementById('chapter-one')?.scrollIntoView({
+        behavior: shouldReduce ? 'auto' : 'smooth',
+      });
+    }, shouldReduce ? 0 : 600);
+  }, [envelopeOpen, audio, shouldReduce]);
 
   // ── Base fade-in config ─────────────────────────────────────────────
   const fadeUp = (delay: number) => ({
@@ -366,20 +385,20 @@ export default function Landing() {
           <motion.button
             onClick={handleEnvelopeClick}
             aria-label="Open this letter"
-            disabled={hasInteracted}
+            disabled={envelopeOpen}
             style={{
               background:  'none',
               border:      'none',
               padding:     '8px',
-              cursor:      hasInteracted ? 'default' : 'pointer',
+              cursor:      envelopeOpen ? 'default' : 'pointer',
               position:    'relative',
               display:     'block',
               // Minimum touch target: 44×44px
               minWidth:    '44px',
               minHeight:   '44px',
             }}
-            whileHover={hasInteracted || shouldReduce ? undefined : { scale: 1.05 }}
-            whileTap={hasInteracted  || shouldReduce ? undefined : { scale: 0.97 }}
+            whileHover={envelopeOpen || shouldReduce ? undefined : { scale: 1.05 }}
+            whileTap={envelopeOpen   || shouldReduce ? undefined : { scale: 0.97 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
           >
             <Envelope isOpen={envelopeOpen} shouldReduce={shouldReduce} />
@@ -404,12 +423,12 @@ export default function Landing() {
                 initial={{ opacity: 0, y: 0, x: 0 }}
                 animate={{
                   opacity: [0, 0.9, 0],
-                  y:       [-8, -55 - Math.random() * 40],
+                  y:       [-8, p.targetY],
                   x:       [0,  p.drift],
                 }}
                 exit={{ opacity: 0 }}
                 transition={{
-                  duration: 1.2 + Math.random() * 0.6,
+                  duration: p.duration,
                   delay:    p.delay,
                   ease:     'easeOut',
                 }}
@@ -419,7 +438,7 @@ export default function Landing() {
 
           {/* Open label — hidden after click */}
           <AnimatePresence>
-            {!hasInteracted && (
+            {!envelopeOpen && (
               <motion.span
                 style={{
                   display:       'block',

@@ -245,7 +245,9 @@ export default function JourneyIndicator() {
     // Resolve the active section and push to state
     function update() {
       const next = pickActiveId(ids, intersectingRef.current);
-      setActiveId(next);
+      if (next !== null) {
+        setActiveId(next);
+      }
     }
 
     // Build the observer

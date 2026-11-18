@@ -295,30 +295,43 @@ function NodeButton({ node, title, isOpen, onClick, shouldReduce, vbW, vbH }: No
   const topPct  = (node.y / vbH) * 100;
 
   return (
-    <motion.button
-      onClick={() => onClick(node.id)}
-      aria-label={`Memory: ${title}${isOpen ? ' (open)' : ''}`}
-      aria-pressed={isOpen}
+    <div
       style={{
-        position: 'absolute', left: `${leftPct}%`, top: `${topPct}%`,
+        position:  'absolute',
+        left:      `${leftPct}%`,
+        top:       `${topPct}%`,
         transform: 'translate(-50%, -50%)',
-        width: '44px', height: '44px',
-        borderRadius: '50%', background: 'transparent', border: 'none',
-        cursor: 'pointer', zIndex: 2,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex:    2,
       }}
-      whileHover={shouldReduce ? undefined : { scale: 1.3 }}
-      whileTap={shouldReduce   ? undefined : { scale: 0.9 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      title={title}
     >
-      <span style={{
-        position: 'absolute', width: '1px', height: '1px',
-        overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap',
-      }}>
-        {title}
-      </span>
-    </motion.button>
+      <motion.button
+        onClick={() => onClick(node.id)}
+        aria-label={`Memory: ${title}${isOpen ? ' (open)' : ''}`}
+        aria-pressed={isOpen}
+        style={{
+          width:          '44px',
+          height:         '44px',
+          borderRadius:   '50%',
+          background:     'transparent',
+          border:         'none',
+          cursor:         'pointer',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+        }}
+        whileHover={shouldReduce ? undefined : { scale: 1.3 }}
+        whileTap={shouldReduce   ? undefined : { scale: 0.9 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        title={title}
+      >
+        <span style={{
+          position: 'absolute', width: '1px', height: '1px',
+          overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap',
+        }}>
+          {title}
+        </span>
+      </motion.button>
+    </div>
   );
 }
 
@@ -361,15 +374,15 @@ export default function ChapterFour() {
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ref-callback — called by React when a panel mounts or unmounts.
-  // On MOUNT (el !== null): store the element, then scroll to it if it
-  // belongs to the currently open constellation.  This fires at exactly
-  // the right moment: after AnimatePresence has rendered the new panel
-  // but before the browser has painted, so scrollIntoView is reliable.
+  // On MOUNT (el !== null): store the element, then scroll to it and start
+  // the violet glow pulse if it belongs to the currently open constellation.
+  // This guarantees scroll and pulse only start when the new panel actually mounts
+  // (after AnimatePresence finishes exiting the previous panel).
   const handlePanelRef = useCallback((id: number, el: HTMLDivElement | null) => {
     if (el) {
       panelRefs.current.set(id, el);
 
-      // Scroll only when this panel is the one the user just selected
+      // Scroll and highlight only when this panel is the one the user just selected
       if (id === openIdRef.current) {
         requestAnimationFrame(() => {
           el.scrollIntoView({
@@ -377,6 +390,16 @@ export default function ChapterFour() {
             block:    'center',
           });
         });
+
+        if (highlightTimer.current) clearTimeout(highlightTimer.current);
+        setHighlightedId(null);
+
+        if (!shouldReduceRef.current) {
+          setHighlightedId(id);
+          highlightTimer.current = setTimeout(() => {
+            setHighlightedId(null);
+          }, 2000);
+        }
       }
     } else {
       panelRefs.current.delete(id);
@@ -393,26 +416,7 @@ export default function ChapterFour() {
       setHighlightedId(null);
       if (highlightTimer.current) clearTimeout(highlightTimer.current);
     }
-    // Scroll + highlight are now handled by the useEffect below,
-    // which fires after React commits the new openId to the DOM.
   }, [openId]);
-
-  // ── Highlight every time a new constellation is opened ─────────────
-  // Scroll is now triggered in handlePanelRef the moment the panel mounts.
-  // This effect handles only the temporary violet-glow highlight.
-  useEffect(() => {
-    if (openId === null) return;
-
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    setHighlightedId(null);
-
-    if (!shouldReduce) {
-      setHighlightedId(openId);
-      highlightTimer.current = setTimeout(() => {
-        setHighlightedId(null);
-      }, 2000);
-    }
-  }, [openId, shouldReduce]);
 
   const handleClose = useCallback(() => {
     setOpenId(null);

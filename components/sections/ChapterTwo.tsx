@@ -256,6 +256,7 @@ function ScrapPhoto({
             className="object-cover"
             sizes="(max-width: 720px) 90vw, 480px"
             loading="lazy"
+            decoding="async"
           />
           {/* Faint vignette over photo */}
           <div
@@ -537,7 +538,7 @@ export default function ChapterTwo() {
 
               <ScrapPhoto
                 src="/photos/img04-baby.webp"
-                alt="Genshin Impact screenshot — the moon area we explored together"
+                alt="Childhood photo of Candace as a baby"
                 rotation={-1.5}
                 tapeCorner="top-left"
                 caption="Just a baby."

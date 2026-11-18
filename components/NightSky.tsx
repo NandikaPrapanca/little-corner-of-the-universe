@@ -106,6 +106,10 @@ function WatercolorMoon() {
         <img
           src="/characters/kuromi/kuromi.webp"
           alt=""
+          width={58}
+          height={58}
+          loading="eager"
+          decoding="async"
           draggable={false}
           style={{
             width:          '100%',
@@ -363,20 +367,23 @@ export default function NightSky() {
 
   // ── Subtle parallax on scroll ─────────────────────────────────────────
   useEffect(() => {
-    let rafId: number;
+    let rafId: number | null = null;
 
     function handleScroll() {
+      if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
-        if (!parallaxRef.current) return;
-        const offset = window.scrollY * 0.04; // very gentle — 4% of scroll
-        parallaxRef.current.style.transform = `translateY(${offset}px)`;
+        if (parallaxRef.current) {
+          const offset = window.scrollY * 0.04; // very gentle — 4% of scroll
+          parallaxRef.current.style.transform = `translateY(${offset}px)`;
+        }
+        rafId = null;
       });
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', handleScroll);
-      cancelAnimationFrame(rafId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -407,7 +414,7 @@ export default function NightSky() {
         Each batch has an increasing CSS animation-delay on its wrapper
         so they appear progressively, not all at once.
       */}
-      <div ref={parallaxRef} className="absolute inset-0 will-change-transform">
+      <div ref={parallaxRef} className="absolute inset-0 will-change-transform" style={{ willChange: 'transform' }}>
         {/* Batch 1 — immediate (seed offset 0) */}
         <div
           className="absolute inset-0"

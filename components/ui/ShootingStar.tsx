@@ -27,7 +27,8 @@ export default function ShootingStar() {
     // Skip entirely when user prefers reduced motion
     if (shouldReduce) return;
 
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let clearStarTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     function scheduleStar() {
       // Random interval: 7–16 seconds — feels organic, not mechanical
@@ -43,7 +44,7 @@ export default function ShootingStar() {
         });
 
         // Clear star and reschedule after streak completes
-        setTimeout(() => {
+        clearStarTimeoutId = setTimeout(() => {
           setStar(null);
           scheduleStar();
         }, 1100);
@@ -53,7 +54,10 @@ export default function ShootingStar() {
     // Small initial delay — don't fire on first render
     timeoutId = setTimeout(scheduleStar, 4000);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (clearStarTimeoutId) clearTimeout(clearStarTimeoutId);
+    };
   }, [shouldReduce]);
 
   // Nothing rendered when motion is reduced
@@ -70,12 +74,17 @@ export default function ShootingStar() {
             key={star.id}
             className="absolute"
             style={{
-              top:       star.top,
-              left:      star.left,
-              transform: `rotate(${star.angle}deg)`,
+              top:        star.top,
+              left:       star.left,
+              transform:  `rotate(${star.angle}deg)`,
+              willChange: 'transform, opacity',
             }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 0] }}
+            initial={{ opacity: 0, x: 0, y: 0 }}
+            animate={{
+              opacity: [0, 1, 0],
+              x:       [0, 160],
+              y:       [0, 80],
+            }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.95, ease: 'easeOut' }}
           >

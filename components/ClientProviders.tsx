@@ -18,6 +18,7 @@
 
 import { useEffect }     from 'react';
 import type { ReactNode } from 'react';
+import { LazyMotion, domAnimation } from 'framer-motion';
 import AudioProvider      from '@/components/AudioProvider';
 import JourneyIndicator   from '@/components/JourneyIndicator';
 import FirstInteraction   from '@/components/FirstInteraction';
@@ -45,14 +46,16 @@ export default function ClientProviders({ children }: ClientProvidersProps) {
   }, []); // empty deps — runs exactly once on mount
 
   return (
-    <AudioProvider>
-      {children}
+    <LazyMotion features={domAnimation} strict={false}>
+      <AudioProvider>
+        {children}
 
-      {/* Fixed journey indicator — six stars at bottom-center */}
-      <JourneyIndicator />
+        {/* Fixed journey indicator — six stars at bottom-center */}
+        <JourneyIndicator />
 
-      {/* First-interaction hint — shows until the visitor first taps */}
-      <FirstInteraction />
-    </AudioProvider>
+        {/* First-interaction hint — shows until the visitor first taps */}
+        <FirstInteraction />
+      </AudioProvider>
+    </LazyMotion>
   );
 }

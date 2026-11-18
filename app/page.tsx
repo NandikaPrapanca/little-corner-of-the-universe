@@ -8,13 +8,15 @@
  *   → Ending
  */
 
+import dynamic from 'next/dynamic';
 import Landing        from '@/components/sections/Landing';
 import ChapterOne     from '@/components/sections/ChapterOne';
 import ChapterTwo     from '@/components/sections/ChapterTwo';
-import ChapterThree   from '@/components/sections/ChapterThree';
-import ChapterFour    from '@/components/sections/ChapterFour';
-import PomTransition  from '@/components/sections/PomTransition';
-import Ending         from '@/components/sections/Ending';
+
+const ChapterThree  = dynamic(() => import('@/components/sections/ChapterThree'));
+const ChapterFour   = dynamic(() => import('@/components/sections/ChapterFour'));
+const PomTransition = dynamic(() => import('@/components/sections/PomTransition'));
+const Ending        = dynamic(() => import('@/components/sections/Ending'));
 
 export default function Home() {
   return (

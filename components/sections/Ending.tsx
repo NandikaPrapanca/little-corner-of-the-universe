@@ -3,9 +3,9 @@
 /**
  * Ending.tsx
  * The final section — the closing of the storybook.
- * Content intentionally empty — written in a later pass.
  */
 
+import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
 import FadeIn     from '@/components/ui/FadeIn';
 import Container  from '@/components/ui/Container';
@@ -39,7 +39,7 @@ export default function Ending() {
               lineHeight:    1.2,
             }}
           >
-            {/* Closing message will be added here */}
+            Happy 17th Birthday, Candace.
           </h2>
         </FadeIn>
 
@@ -51,24 +51,30 @@ export default function Ending() {
               fontSize:   'clamp(0.875rem, 2.5vw, 1rem)',
               fontWeight: 300,
               color:      '#CBD5E1',
-              maxWidth:   '400px',
+              maxWidth:   '420px',
               lineHeight: 1.9,
             }}
           >
-            {/* Closing paragraph will be added here */}
+            May your seventeenth year be filled with warmth, peaceful nights, and every quiet happiness you deserve.
           </p>
         </FadeIn>
 
         {/* ── Pom sitting illustration slot ───────────────────────────── */}
         <FadeIn delay={0.5}>
           <div
+            className="relative"
             style={{ width: '100px', height: '100px' }}
             aria-label="Pom sitting"
           >
-            {/*
-              Pom sit illustration: /characters/pom/sit.webp
-              Will be placed here.
-            */}
+            <Image
+              src="/characters/pom/sit.png"
+              alt="Pom sitting quietly"
+              width={100}
+              height={100}
+              loading="lazy"
+              decoding="async"
+              className="object-contain"
+            />
           </div>
         </FadeIn>
 
@@ -101,7 +107,7 @@ export default function Ending() {
               letterSpacing: '0.05em',
             }}
           >
-            {/* Footer note / made with love tag will go here */}
+            A Little Corner of the Universe · Made with love
           </p>
         </motion.div>
 
