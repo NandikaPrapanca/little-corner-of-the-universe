@@ -1,6 +1,6 @@
 /**
- * page.tsx
- * The main page — a single long-scrolling storybook.
+ * app/(v1)/v1/page.tsx
+ * The original Sweet 17 storybook — preserved intact at /v1.
  *
  * Sections:
  *   Landing → Chapter One → Chapter Two → Chapter Three → Chapter Four
@@ -8,7 +8,7 @@
  *   → Ending
  */
 
-import dynamic from 'next/dynamic';
+import dynamic        from 'next/dynamic';
 import Landing        from '@/components/sections/Landing';
 import ChapterOne     from '@/components/sections/ChapterOne';
 import ChapterTwo     from '@/components/sections/ChapterTwo';
@@ -18,7 +18,7 @@ const ChapterFour   = dynamic(() => import('@/components/sections/ChapterFour'))
 const PomTransition = dynamic(() => import('@/components/sections/PomTransition'));
 const Ending        = dynamic(() => import('@/components/sections/Ending'));
 
-export default function Home() {
+export default function V1StorybookPage() {
   return (
     <>
       <Landing />

@@ -9,10 +9,7 @@
 
 /* ── CSS Custom Properties ───────────────────────────────────────────────── */
 :root {
-  --font-cormorant: 'Cormorant Garamond', Georgia, serif;
-  --font-inter: 'Inter', system-ui, sans-serif;
-
-  /* Design tokens */
+  /* V1 Design tokens (default fallback for v1 components) */
   --color-bg:        #071827;
   --color-card:      #10253D;
   --color-primary:   #F8FAFC;
@@ -26,6 +23,50 @@
   --fade-duration:   0.8s;
   --slide-distance:  20px;
   --hover-scale:     1.03;
+}
+
+/* ── V2 Warm Journal Desk Theme Scope ────────────────────────────────────── */
+.v2-desk {
+  --color-bg:        #FAF6F0;
+  --color-card:      #FFFDF9;
+  --color-primary:   #2B2623;
+  --color-secondary: #5C534D;
+  --color-accent:    #B86B4B;
+  --color-sage:      #6E826F;
+
+  background-color: #FAF6F0;
+  background-image:
+    radial-gradient(ellipse at 12% 8%, rgba(235, 221, 202, 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse at 88% 92%, rgba(226, 213, 195, 0.48) 0%, transparent 55%),
+    linear-gradient(180deg, #FAF6F0 0%, #F5EFE6 55%, #F3ECE1 100%);
+  color: #2B2623;
+  position: relative;
+}
+
+/* Subtle tactile paper-grain overlay on the v2 desk */
+.v2-desk::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.38;
+  background-image:
+    radial-gradient(rgba(120, 96, 72, 0.08) 0.75px, transparent 0.75px),
+    radial-gradient(rgba(120, 96, 72, 0.05) 0.75px, transparent 0.75px);
+  background-size: 22px 22px, 31px 31px;
+  background-position: 0 0, 11px 13px;
+}
+
+.v2-desk ::selection {
+  background-color: rgba(184, 107, 75, 0.2);
+  color: #2B2623;
+}
+
+.v2-desk :focus-visible {
+  outline: 2px solid #B86B4B;
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 /* ── Base Reset & Document ────────────────────────────────────────────────── */
@@ -43,9 +84,9 @@ html {
 }
 
 body {
-  background-color: var(--color-bg);
+  background-color: #FAF6F0;
   color: var(--color-primary);
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
   font-weight: 300;
   line-height: 1.75;
   /* Prevent horizontal overflow */
@@ -60,14 +101,14 @@ body {
 
 /* ── Typography Base ─────────────────────────────────────────────────────── */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-cormorant);
+  font-family: var(--font-cormorant), 'Cormorant Garamond', Georgia, serif;
   font-weight: 400;
   line-height: 1.2;
   color: var(--color-primary);
 }
 
 p {
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
   color: var(--color-secondary);
   font-weight: 300;
 }

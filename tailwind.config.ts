@@ -5,14 +5,24 @@ const config: Config = {
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './data/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
       // ─── Design System Colors ─────────────────────────────────────
       colors: {
         night: {
-          bg:      '#071827', // Page background
-          card:    '#10253D', // Card surfaces
+          bg:      '#071827', // Page background (v1)
+          card:    '#10253D', // Card surfaces (v1)
+        },
+        desk: {
+          bg:         '#FAF6F0', // Warm cream linen (v2)
+          surface:    '#F3ECE1', // Deeper warm linen (v2)
+          paper:      '#FFFDF9', // Polaroid cardstock (v2)
+          ink:        '#2B2623', // Warm charcoal ink (v2)
+          muted:      '#6B615A', // Soft warm gray-brown (v2)
+          terracotta: '#B86B4B', // Muted terracotta accent (v2)
+          sage:       '#6E826F', // Muted sage accent (v2)
         },
         text: {
           primary:   '#F8FAFC', // Main text
@@ -28,8 +38,9 @@ const config: Config = {
 
       // ─── Typography ───────────────────────────────────────────────
       fontFamily: {
-        title: ['var(--font-cormorant)', 'Cormorant Garamond', 'Georgia', 'serif'],
-        body:  ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
+        title:       ['var(--font-cormorant)', 'Cormorant Garamond', 'Georgia', 'serif'],
+        body:        ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
+        handwriting: ['var(--font-caveat)', 'Caveat', 'cursive'],
       },
 
       // ─── Max widths ───────────────────────────────────────────────
