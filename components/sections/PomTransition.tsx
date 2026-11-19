@@ -4,28 +4,20 @@
  * PomTransition.tsx
  * The bridge between the story chapters and the final letter.
  *
- * Stage machine (unchanged):
+ * Stage machine:
  *   hidden → walking → sitting → releasing → opening → done
  *
- * New interaction flow:
- *   1. Pom walks in (unchanged).
- *   2. Pom arrives holding the envelope → sit-envelope.png, breathing idle.
- *   3. The envelope area glows softly. Only the envelope is clickable.
- *   4. Clicking the envelope:
- *        a. Instantly swaps to sit.png (Pom hands over the letter).
- *        b. Waits ~300ms.
- *        c. Smoothly scrolls to #letter.
- *   5. Letter section is already in the DOM; scroll reveals it naturally.
- *
- * Sprite mapping:
- *   walking                        → walk-1..5.png  (~9.5 FPS)
- *   sitting (idle, holding)        → sit-envelope.png
- *   releasing | opening | done     → sit.png   (handed off)
- *
- * No floating envelope overlay.
- * No dark screen overlay.
- * No old invisible full-Pom click target.
- * The only interactive element is the envelope hitbox on the sprite.
+ * Mobile & Tablet Reliability:
+ *   - Uses a mobile-safe IntersectionObserver threshold (0.15).
+ *   - Preloads and pre-decodes (`img.decode()`) all sprite frames on mount
+ *     with a safety fallback timeout so slow mobile networks never hang.
+ *   - Mounts all sprite frames as stacked <img> layers and toggles opacity
+ *     instead of mutating a single <img src> every 105ms (which causes
+ *     mobile Safari/Chrome to abort in-flight async decodes of ~620 KB PNGs
+ *     and stay frozen on frame 1).
+ *   - Uses declarative Framer Motion `animate={{ x: 0, opacity: 1 }}` and a
+ *     deterministic walk duration timer so the walk → sit transition never
+ *     stalls on touch devices.
  */
 
 import {
@@ -40,7 +32,6 @@ import {
   motion,
   AnimatePresence,
   useReducedMotion,
-  useAnimation,
 } from 'framer-motion';
 import { AudioContext } from '@/components/AudioProvider';
 import { playEnvelopeRustle } from '@/utils/soundEffects';
@@ -58,48 +49,84 @@ const WALK_FRAMES = [
   '/characters/pom/walk-5.png',
 ] as const;
 
-const SIT           = '/characters/pom/sit.png';
-const SIT_ENVELOPE  = '/characters/pom/sit-envelope.png';
-// envelope-open.png kept in preload list for future use but not rendered in this flow
+const SIT          = '/characters/pom/sit.png';
+const SIT_ENVELOPE = '/characters/pom/sit-envelope.png';
+
+const RENDERED_SPRITES: readonly string[] = [
+  ...WALK_FRAMES,
+  SIT_ENVELOPE,
+  SIT,
+];
 
 const ALL_ASSETS: readonly string[] = [
-  ...WALK_FRAMES,
-  SIT,
-  SIT_ENVELOPE,
+  ...RENDERED_SPRITES,
   '/characters/pom/envelope-open.png',
 ];
 
 const WALK_FRAME_MS    = 105; // ~9.5 FPS
 const WALK_FRAME_COUNT = WALK_FRAMES.length;
+const WALK_DURATION_S  = 4;
+const WALK_DURATION_MS = WALK_DURATION_S * 1000;
 
 // ─── Sprite size ──────────────────────────────────────────────────────────
 
 const POM_W = 160;
 const POM_H = 160;
 
-// ─── Asset preloader ──────────────────────────────────────────────────────
+// ─── Asset preloader & decoder ────────────────────────────────────────────
 
 function useSpritePreloader(): boolean {
   const [walkReady, setWalkReady] = useState(false);
 
   useEffect(() => {
-    let resolved = 0;
+    let cancelled = false;
+    let resolved  = 0;
+
+    const markWalkFrameReady = () => {
+      if (cancelled) return;
+      resolved++;
+      if (resolved >= WALK_FRAME_COUNT) {
+        setWalkReady(true);
+      }
+    };
+
+    // Safety fallback: never block mobile walk animation longer than 2.2s
+    const fallbackTimer = setTimeout(() => {
+      if (!cancelled) setWalkReady(true);
+    }, 2200);
 
     ALL_ASSETS.forEach((src) => {
+      const isWalkFrame = (WALK_FRAMES as readonly string[]).includes(src);
       const img = new window.Image();
-      const done = () => {
-        if ((WALK_FRAMES as readonly string[]).includes(src)) {
-          resolved++;
-          if (resolved === WALK_FRAME_COUNT) setWalkReady(true);
+      img.decoding = 'async';
+
+      const handleLoaded = () => {
+        if (typeof img.decode === 'function') {
+          img
+            .decode()
+            .catch(() => {
+              // Ignore decode warning; image is already loaded
+            })
+            .finally(() => {
+              if (isWalkFrame) markWalkFrameReady();
+            });
+        } else if (isWalkFrame) {
+          markWalkFrameReady();
         }
       };
-      img.onload  = done;
+
+      img.onload = handleLoaded;
       img.onerror = () => {
         console.warn(`[PomTransition] Sprite failed to load: ${src}`);
-        done();
+        if (isWalkFrame) markWalkFrameReady();
       };
       img.src = src;
     });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   return walkReady;
@@ -143,15 +170,15 @@ export default function PomTransition() {
   const [stage,     setStage]     = useState<PomStage>('hidden');
   const [walkFrame, setWalkFrame] = useState(0);
   // Hover state for the envelope hitbox
-  const [envHovered,    setEnvHovered]    = useState(false);
+  const [envHovered,     setEnvHovered]     = useState(false);
   // Letter is hidden until Pom hands it over — prevents layout spoiler
   const [letterUnlocked, setLetterUnlocked] = useState(false);
 
   const walkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const walkFinishRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const duckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRef      = useRef<HTMLDivElement>(null);
-  const pomControls     = useAnimation();
 
   // Stores user's audio state prior to ducking so it can be restored cleanly
   const priorAudioState = useRef<{ volume: number; isMuted: boolean } | null>(null);
@@ -220,42 +247,58 @@ export default function PomTransition() {
       if (duckIntervalRef.current) clearInterval(duckIntervalRef.current);
       if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
       if (walkIntervalRef.current) clearInterval(walkIntervalRef.current);
+      if (walkFinishRef.current) clearTimeout(walkFinishRef.current);
     };
   }, []);
 
-  // ── Walk trigger ────────────────────────────────────────────────────
+  // ── Walk trigger (mobile-safe threshold 0.15) ───────────────────────
   useEffect(() => {
-    if (!sectionRef.current) return;
+    if (!sectionRef.current || stage !== 'hidden') return;
+
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && stage === 'hidden') setStage('walking');
+        if (entry.isIntersecting) {
+          setStage('walking');
+          observer.disconnect();
+        }
       },
-      { threshold: 0.25 },
+      { threshold: 0.15, rootMargin: '0px 0px -20px 0px' },
     );
+
     observer.observe(sectionRef.current);
     return () => observer.disconnect();
   }, [stage]);
 
-  // ── Walk: frame cycle + horizontal movement ─────────────────────────
+  // ── Walk: frame cycle + deterministic walk completion timer ─────────
   useEffect(() => {
     if (stage !== 'walking' || !walkReady) return;
 
+    // Cycle through walk-1..5.png at ~9.5 FPS
     walkIntervalRef.current = setInterval(() => {
-      setWalkFrame(f => (f + 1) % WALK_FRAME_COUNT);
+      setWalkFrame((f) => (f + 1) % WALK_FRAME_COUNT);
     }, WALK_FRAME_MS);
 
-    pomControls.start({
-      x: 0,
-      transition: { duration: shouldReduce ? 0.01 : 4, ease: 'linear' },
-    }).then(() => {
-      if (walkIntervalRef.current) clearInterval(walkIntervalRef.current);
+    // Transition to 'sitting' once the 4s walk completes
+    const durationMs = shouldReduce ? 20 : WALK_DURATION_MS;
+    walkFinishRef.current = setTimeout(() => {
+      if (walkIntervalRef.current) {
+        clearInterval(walkIntervalRef.current);
+        walkIntervalRef.current = null;
+      }
       setStage('sitting');
-    });
+    }, durationMs);
 
     return () => {
-      if (walkIntervalRef.current) clearInterval(walkIntervalRef.current);
+      if (walkIntervalRef.current) {
+        clearInterval(walkIntervalRef.current);
+        walkIntervalRef.current = null;
+      }
+      if (walkFinishRef.current) {
+        clearTimeout(walkFinishRef.current);
+        walkFinishRef.current = null;
+      }
     };
-  }, [stage, walkReady, pomControls, shouldReduce]);
+  }, [stage, walkReady, shouldReduce]);
 
   // ── Envelope click ───────────────────────────────────────────────────
   // 1. Instant sprite swap to sit.png
@@ -275,14 +318,13 @@ export default function PomTransition() {
     duckVolume(0.35, 800);
 
     // Brief pause before reveal
-    await new Promise<void>(res =>
+    await new Promise<void>((res) =>
       setTimeout(res, shouldReduce ? 0 : 300),
     );
 
     setStage('done');
 
     // Mount the Letter section, then scroll to it in the next frame
-    // (requestAnimationFrame ensures the DOM is painted before we scroll)
     setLetterUnlocked(true);
 
     requestAnimationFrame(() => {
@@ -302,14 +344,12 @@ export default function PomTransition() {
 
   // ── Derived ──────────────────────────────────────────────────────────
 
-  const isSitting = stage === 'sitting' || stage === 'releasing' || stage === 'opening' || stage === 'done';
-  const isWalking = stage === 'walking';
+  const isSitting  = stage === 'sitting' || stage === 'releasing' || stage === 'opening' || stage === 'done';
+  const isWalking  = stage === 'walking';
   const currentSrc = getSrc(stage, walkFrame);
 
   // Envelope hitbox:
   // Positioned over the lower-centre of the sprite where the envelope lives.
-  // Approximation: ~55% of sprite width, ~25% of sprite height,
-  // anchored to the bottom-centre.
   const ENV_BOX_W = Math.round(POM_W * 0.55); // ~88px
   const ENV_BOX_H = Math.round(POM_H * 0.28); // ~45px
 
@@ -346,6 +386,7 @@ export default function PomTransition() {
               }
               style={{
                 position:       'relative',
+                width:          '100%',
                 height:         `${POM_H + 24}px`,
                 display:        'flex',
                 alignItems:     'flex-end',
@@ -363,8 +404,24 @@ export default function PomTransition() {
                       transformOrigin: 'bottom center',
                       willChange:      'transform',
                     }}
-                    initial={{ x: shouldReduce ? 0 : '-50vw', opacity: shouldReduce ? 1 : 0.85 }}
-                    animate={pomControls}
+                    initial={{
+                      x:       shouldReduce ? 0 : '-42vw',
+                      opacity: shouldReduce ? 1 : 0.88,
+                    }}
+                    animate={{
+                      x:       0,
+                      opacity: 1,
+                    }}
+                    transition={{
+                      x: {
+                        duration: shouldReduce ? 0.01 : WALK_DURATION_S,
+                        ease:     'linear',
+                      },
+                      opacity: {
+                        duration: shouldReduce ? 0.01 : 0.4,
+                        ease:     'easeOut',
+                      },
+                    }}
                   >
                     {/*
                       Ambient glow — centered behind the full sprite.
@@ -390,36 +447,63 @@ export default function PomTransition() {
 
                     {/* Walking bob / sitting breathe wrapper */}
                     <motion.div
-                      style={{ transformOrigin: 'bottom center' }}
-                      animate={shouldReduce ? {} : isWalking
-                        ? { y: [0, -2, 0, 2, 0] }
-                        : isSitting
-                          ? { scaleY: [1, 1.015, 1] }
-                          : {}
+                      style={{
+                        position:        'relative',
+                        width:           `${POM_W}px`,
+                        height:          `${POM_H}px`,
+                        transformOrigin: 'bottom center',
+                      }}
+                      animate={
+                        shouldReduce
+                          ? {}
+                          : isWalking
+                            ? { y: [0, -2, 0, 2, 0] }
+                            : isSitting
+                              ? { scaleY: [1, 1.015, 1] }
+                              : {}
                       }
-                      transition={shouldReduce ? {} : isWalking
-                        ? { duration: 0.45, repeat: Infinity, ease: 'easeInOut', repeatType: 'loop' }
-                        : { duration: 2.5, repeat: Infinity, ease: 'easeInOut', repeatType: 'mirror' }
+                      transition={
+                        shouldReduce
+                          ? {}
+                          : isWalking
+                            ? { duration: 0.45, repeat: Infinity, ease: 'easeInOut', repeatType: 'loop' }
+                            : { duration: 2.5, repeat: Infinity, ease: 'easeInOut', repeatType: 'mirror' }
                       }
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={currentSrc}
-                        alt=""
-                        aria-hidden="true"
-                        width={POM_W}
-                        height={POM_H}
-                        loading="lazy"
-                        decoding="async"
-                        draggable={false}
-                        style={{
-                          display:        'block',
-                          width:          `${POM_W}px`,
-                          height:         `${POM_H}px`,
-                          objectFit:      'contain',
-                          imageRendering: 'auto',
-                        }}
-                      />
+                      {/*
+                        Stacked pre-decoded sprite frames:
+                        All frames stay mounted in the DOM with eager loading and
+                        toggle opacity instantaneously so mobile Safari/Chrome
+                        never stalls decoding ~620 KB PNGs on `src` swaps.
+                      */}
+                      {RENDERED_SPRITES.map((spriteSrc) => {
+                        const isActive = spriteSrc === currentSrc;
+                        return (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            key={spriteSrc}
+                            src={spriteSrc}
+                            alt=""
+                            aria-hidden="true"
+                            width={POM_W}
+                            height={POM_H}
+                            loading="eager"
+                            decoding="sync"
+                            draggable={false}
+                            style={{
+                              position:       'absolute',
+                              inset:          0,
+                              display:        'block',
+                              width:          `${POM_W}px`,
+                              height:         `${POM_H}px`,
+                              objectFit:      'contain',
+                              imageRendering: 'auto',
+                              opacity:        isActive ? 1 : 0,
+                              pointerEvents:  'none',
+                            }}
+                          />
+                        );
+                      })}
 
                       {/* ── Envelope hitbox ────────────────────────
                         Only active in the 'sitting' stage.
@@ -427,38 +511,35 @@ export default function PomTransition() {
                         The hitbox is the ONLY interactive element.
                       ─────────────────────────────────────────────── */}
                       {stage === 'sitting' && (
-                        <>
-                          {/* Transparent button — hitbox only, no visible element */}
-                          <button
-                            onClick={handleEnvelopeClick}
-                            aria-label="Take the letter from Pom"
-                            onMouseEnter={() => setEnvHovered(true)}
-                            onMouseLeave={() => setEnvHovered(false)}
-                            style={{
-                              position:        'absolute',
-                              bottom:          '2px',
-                              left:            '50%',
-                              transform:       `translateX(-50%) scale(${envHovered && !shouldReduce ? 1.04 : 1})`,
-                              transition:      'transform 0.2s ease',
-                              width:           `${ENV_BOX_W}px`,
-                              height:          `${ENV_BOX_H}px`,
-                              background:      'transparent',
-                              border:          'none',
-                              cursor:          'pointer',
-                              zIndex:          4,
-                              // Minimum touch target
-                              minWidth:        '44px',
-                              minHeight:       '44px',
-                            } as CSSProperties}
-                          />
-                        </>
+                        <button
+                          type="button"
+                          onClick={handleEnvelopeClick}
+                          aria-label="Take the letter from Pom"
+                          onMouseEnter={() => setEnvHovered(true)}
+                          onMouseLeave={() => setEnvHovered(false)}
+                          style={{
+                            position:   'absolute',
+                            bottom:     '2px',
+                            left:       '50%',
+                            transform:  `translateX(-50%) scale(${envHovered && !shouldReduce ? 1.04 : 1})`,
+                            transition: 'transform 0.2s ease',
+                            width:      `${ENV_BOX_W}px`,
+                            height:     `${ENV_BOX_H}px`,
+                            background: 'transparent',
+                            border:     'none',
+                            cursor:     'pointer',
+                            zIndex:     4,
+                            minWidth:   '44px',
+                            minHeight:  '44px',
+                          } as CSSProperties}
+                        />
                       )}
                     </motion.div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* ── "open" hint — appears after 1.5s idle ───────────── */}
+              {/* ── "take the letter" hint — appears after 1.5s idle ── */}
               <AnimatePresence>
                 {stage === 'sitting' && (
                   <motion.p
